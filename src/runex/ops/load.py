@@ -13,7 +13,7 @@ Designed for users needing quick, structured access to spreadsheet content.
 
 import os
 import csv
-import general_functions as gf
+from . import general_functions as gf
 
 try:
     import pandas as pd
