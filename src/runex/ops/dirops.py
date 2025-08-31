@@ -8,7 +8,7 @@ import stat
 import shutil
 import pathlib
 
-from . import general_functions as gf
+from . import utils
 
 #%% === Dirs Manipulation ===
 
@@ -38,7 +38,7 @@ def run_delete(dir_list:list,skip_confimation=False):
         dir_list (list): a list with directories
     """
     question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{"\n".join(dir_list)}\n"
-    confirmation = skip_confimation if skip_confimation else gf.get_user_confirmation(question)
+    confirmation = skip_confimation if skip_confimation else utils.get_user_confirmation(question)
 
     if confirmation:    
         for dir in dir_list:
@@ -76,7 +76,7 @@ def run_unpack(dir_list:list,override:bool = None, another_unpack:int = None):
     """
     
     if override == None:
-        override = gf.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
 
     for row in dir_list:
         
@@ -93,10 +93,10 @@ def run_unpack(dir_list:list,override:bool = None, another_unpack:int = None):
 def run_unpack_all_in_folder(dir_list, recursive=False,override=False):
     
     if override == None:
-        override = gf.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
 
     for i,src in enumerate(dir_list):
-        message = "\n   ".join([f"{gf.VAR["print_tast_div"]}Task {i+1}/{len(dir_list)}",src,""]) 
+        message = "\n   ".join([f"{utils.VAR["print_tast_div"]}Task {i+1}/{len(dir_list)}",src,""]) 
         print(message)
 
         count = 0
@@ -158,10 +158,10 @@ def _run_copy_or_move(option:str, dir_dict:dict,override:bool = None):
     
     # Confirming to the user
     if override == None:
-        override = gf.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
     elif type(override) != bool:
-        gf.message_error('The override option must be a boolian')
-        override = gf.get_user_confirmation("Do you want to overwrite existing files?")
+        utils.message_error('The override option must be a boolian')
+        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
 
 
     for index, item in enumerate(dir_dict.values()):
@@ -239,7 +239,7 @@ def _unpack_func(src,dst):
         shutil.unpack_archive(src,dst)
     except:
         message = f"Unable to unpack\n{' '*5}{src}\nSkiping Task"
-        gf.message_error(message)
+        utils.message_error(message)
 
 def _get_directory_info(item: dict) -> tuple:
     """
@@ -261,7 +261,7 @@ def _get_directory_info(item: dict) -> tuple:
 
     if src is None or dst is None:
         message = "Each line of the file must contain 'source' and 'destination' values."
-        gf.message_exit(message)
+        utils.message_exit(message)
 
     return src, dst, onlf, ignf 
 
@@ -352,7 +352,7 @@ def get_parent_folder_by_level(path, level):
     if len(parts) >= level + 1:
         return parts[-(level + 1)]
     else:
-        gf.message_error("Parent not found")
+        utils.message_error("Parent not found")
 
 def find_files_by_regex(base_path, file_pattern, recursive=True):
     """
@@ -407,7 +407,7 @@ def make_dir_dict(source,destination,onlyfiles=None, ignorefiles = None):
     tignorefiles = type(ignorefiles) if ignorefiles else type(destination)
     
     if not(isinstance(source,(str,list)) and type(source)==type(destination)==tonlyfiles==tignorefiles):
-        gf.message_exit("The types of the input variable don't match")
+        utils.message_exit("The types of the input variable don't match")
     
     # --- LOGIC ---
     if isinstance(source,str):
@@ -458,7 +458,7 @@ def _check_not_infloop(src:str,dst:str):
     dst_base, dst_last = os.path.split(dst)
 
     if os.path.isdir(src) and dst in src and src_base!=dst_base:
-        gf.message_error(f"Possible infinite loop in \n{src}\n{dst}\nSkiping Task")
+        utils.message_error(f"Possible infinite loop in \n{src}\n{dst}\nSkiping Task")
         return False
     else:
         return True
@@ -478,9 +478,9 @@ def _check_valid_dir(dir_path:str,exit_process = False):
     else:
         message = f"Diretory not found.\n{dir_path}"
         if exit_process:
-            gf.message_exit(message)
+            utils.message_exit(message)
         else:
-            gf.message_error(f"{message}\nSkiping Task")
+            utils.message_error(f"{message}\nSkiping Task")
             return False
 
 def _check_valid_unpack(dir_path:str,silent=False):
@@ -508,9 +508,9 @@ def _check_valid_unpack(dir_path:str,silent=False):
     
     if not silent:
         if not dir_exists:
-            gf.message_error(f"Directory do not exists.\n{dir_path}\nSkiping Task...")
+            utils.message_error(f"Directory do not exists.\n{dir_path}\nSkiping Task...")
         if not valid_format:
-            gf.message_error(
+            utils.message_error(
             f"""Format not supported.
             {dir_path}\n
             The supported formats are: {", ".join(supported_formats)}
@@ -544,7 +544,7 @@ def _check_input_str_list(data):
         list: A list of strings.
 
     Raises:
-        SystemExit: If input is not a string or a list of strings, triggers gf.message_exit.
+        SystemExit: If input is not a string or a list of strings, triggers utils.message_exit.
     """
     if isinstance(data,str):
         return [data]
@@ -553,8 +553,8 @@ def _check_input_str_list(data):
 
         if all(isinstance(item, str) for item in data):
             return data
-        gf.message_exit("Invalid input format - the variable must be a str or list of strings")
+        utils.message_exit("Invalid input format - the variable must be a str or list of strings")
     else:
 
-        gf.message_exit("Invalid input format - the variable must be a str or list of strings")
+        utils.message_exit("Invalid input format - the variable must be a str or list of strings")
 

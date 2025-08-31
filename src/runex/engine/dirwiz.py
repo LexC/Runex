@@ -2,7 +2,7 @@
 import os
 
 from ..ops import dirops
-from ..ops import general_functions as gf
+from ..ops import utils
 
 #%% === General Tools ===
 
@@ -49,7 +49,7 @@ def determine_spreadsheet_file(ssfile):
     while not valid_ssfile:
 
         if not ssfile or not first:
-            ssfile = gf.get_user_input(question)
+            ssfile = utils.get_user_input(question)
             first = False
         
         ssfile = dirops.fixpath(ssfile)
@@ -58,10 +58,10 @@ def determine_spreadsheet_file(ssfile):
             if ssfile.endswith(".csv"):
                 valid_ssfile = True
             else:
-                gf.message_error("Invalid file format: it should be .csv")
+                utils.message_error("Invalid file format: it should be .csv")
 
         else: 
-            gf.message_error("The file does not exist.")
+            utils.message_error("The file does not exist.")
 
     return ssfile
 
@@ -91,7 +91,7 @@ def determine_option(option):
             if option in choice:
                 return option_keys[i]
     
-    gf.message_exit("Invalid Option.")
+    utils.message_exit("Invalid Option.")
 
 # ---------- Sheet data ----------
 
@@ -129,10 +129,10 @@ def get_sheet_data_dircolumns(ssfile):
     Returns:
         list: 1-dimensional array with directory paths.
     """
-    sheet = gf.csv_to_dict(ssfile, indexcol=False)
+    sheet = utils.csv_to_dict(ssfile, indexcol=False)
 
     if not sheet:
-        gf.exit_message("The sheet is empty.")
+        utils.exit_message("The sheet is empty.")
     else:
         dir_list = []
         for row in sheet.values():
@@ -152,7 +152,7 @@ def get_sheet_data_sourcedestination(ssfile):
         dict: A dictionary where the keys are row numbers and the values are sub-dictionaries
               containing 'source', 'destination', 'only', and 'ignore' keys.
     """
-    sheet = gf.csv_to_dict(ssfile, indexcol=False)
+    sheet = utils.csv_to_dict(ssfile, indexcol=False)
     
     # Standardize column names
     removechars = [' ', '_', '-',"'",'"']
@@ -169,7 +169,7 @@ def get_sheet_data_sourcedestination(ssfile):
 
     for row in standardized_sheet.values():
         if 'source' not in row or 'destination' not in row:
-            gf.exit_message("The sheet must have at least the columns: Source and Destination.")
+            utils.exit_message("The sheet must have at least the columns: Source and Destination.")
 
     dir_dict = {}
     for idx, row in standardized_sheet.items():

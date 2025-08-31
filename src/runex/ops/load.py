@@ -13,7 +13,7 @@ Designed for users needing quick, structured access to spreadsheet content.
 
 import os
 import csv
-from . import general_functions as gf
+from . import utils
 
 try:
     import pandas as pd
@@ -55,28 +55,28 @@ def validate_file_path(file_path: str, supported_extensions: list[str] = None) -
     Returns:
         str: A validated file path.
     """
-    file_path = gf.path_fix(file_path)
+    file_path = utils.path_fix(file_path)
 
     while True:
         if not isinstance(file_path, str):
-            gf.message_error("The path must be a string.")
+            utils.message_error("The path must be a string.")
         elif not os.path.exists(file_path):
-            gf.message_error(f"File not found: {file_path}")
+            utils.message_error(f"File not found: {file_path}")
         elif not os.path.isfile(file_path):
-            gf.message_error(f"Expected a file but got a directory: {file_path}")
+            utils.message_error(f"Expected a file but got a directory: {file_path}")
         elif isinstance(supported_extensions, (list, str)):
             _, ext = os.path.splitext(file_path)
             ext = ext.lower()
             if isinstance(supported_extensions, str):
                 supported_extensions = [supported_extensions]
             if ext not in supported_extensions:
-                gf.message_error(f"Unsupported file extension: {ext}")
+                utils.message_error(f"Unsupported file extension: {ext}")
             else:
                 break
         else:
             break
 
-        file_path = gf.path_fix(gf.request_input("Please enter a valid file path: "))
+        file_path = utils.path_fix(utils.request_input("Please enter a valid file path: "))
 
     return file_path
 
@@ -104,7 +104,7 @@ def spreadsheet(file_path: str, tab_name: str = None, header_row: int = None, in
     data_dict = spreadsheet2dict(file_path, tab_name=tab_name, header_row=header_row, index_col=index_col)
     if as_dataframe:
         if not HAS_PANDAS:
-            gf.message_exit("pandas is not installed. Cannot convert to DataFrame.")
+            utils.message_exit("pandas is not installed. Cannot convert to DataFrame.")
         return pd.DataFrame.from_dict(data_dict, orient='index')
     return data_dict
 
@@ -130,10 +130,10 @@ def spreadsheet2dict(file_path: str, tab_name: str = None, header_row: int = Non
         raw_data = csv2dict(file_path)
     elif ext in VAR["extensions"]["excel"]:
         if not tab_name:
-            gf.message_exit("tab_name must be provided for Excel files.")
+            utils.message_exit("tab_name must be provided for Excel files.")
         raw_data = excel2dict(file_path, tab_name)
     else:
-        gf.message_exit(f"Unsupported file extension: {ext}")
+        utils.message_exit(f"Unsupported file extension: {ext}")
 
     return reshape_spreadsheet_dict(raw_data, header_row=header_row, index_col=index_col)
 
@@ -177,7 +177,7 @@ def excel2dict(file_path: str, tab_name: str) -> dict:
         dict: Dictionary of column data keyed by spreadsheet-style column labels.
     """
     if not HAS_PANDAS:
-        gf.message_exit("pandas is required to read Excel files.")
+        utils.message_exit("pandas is required to read Excel files.")
 
     df = pd.read_excel(file_path, sheet_name=tab_name, dtype=object)
     return {
@@ -225,9 +225,9 @@ def reshape_spreadsheet_dict(flat_data: dict, header_row: int = None, index_col:
         return flat_data
 
     if header_row is not None and any(header_row >= len(col) for col in flat_data.values()):
-        gf.message_exit("header_row index exceeds the number of rows in one or more columns.")
+        utils.message_exit("header_row index exceeds the number of rows in one or more columns.")
     if index_col is not None and index_col not in flat_data:
-        gf.message_exit(f"Index column '{index_col}' not found in flat_data.")
+        utils.message_exit(f"Index column '{index_col}' not found in flat_data.")
 
     reshaped = {}
 
