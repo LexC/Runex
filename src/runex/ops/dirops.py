@@ -37,7 +37,9 @@ def run_delete(dir_list:list,skip_confimation=False):
     Args:
         dir_list (list): a list with directories
     """
-    question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{'\n'.join(dir_list)}\n"
+    dirs = "\n".join(dir_list)
+    question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{dirs}\n"
+
     confirmation = skip_confimation if skip_confimation else utils.get_user_confirmation(question)
 
     if confirmation:    
