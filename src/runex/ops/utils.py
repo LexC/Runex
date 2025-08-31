@@ -11,15 +11,20 @@ import re
 import sys
 import shutil
 import logging
-import platform
 import unicodedata
- 
+
 import pandas as pd
 
+from pathlib import Path
+
+#-- Custom packges
+from . import dirops
+
+_IMPORTED_NAMES = set(globals().keys())
 #%% === Inicializing ===
 
 # ---------- Support Functions ----------
-def configure_logger(border: str) -> None:
+def _configure_logger(border: str) -> None:
     """
     Configures the root logger to format WARNING and ERROR messages
     with a visual border.
@@ -50,123 +55,23 @@ def global_variables():
         dict: A dictionary containing key configuration values and constants.
     """
     error_border = "\n" + "=" * 50 + "\n"
-    configure_logger(error_border)
+    _configure_logger(error_border)
 
-    return {
-        "valid_chars": r"_.|()[]{}-"
+    config = {
+        "valid_chars": r"_.|()[]{}-",
+        "ss_extensions": {
+            "excel": [".xls", ".xlsx"],
+            "csv": [".csv"]
+        },
     }
+    return config
+
 VAR = global_variables()
-
-#%% === Variables Manipulations ===
-
-# ---------- Strings ----------
-def str_normalize(text: str,lower=False) -> str:
-    """
-    Normalize a string by converting to lowercase, stripping whitespace,
-    and collapsing internal whitespace to a single space.
-
-    Args:
-        text (str): The string to normalize.
-
-    Returns:
-        str: A normalized version of the input string.
-    """
-    if not isinstance(text, str):
-        message_error(f"Not a string variable: {text}")
-        return text
-
-    # --- SETUP AND VALIDATION ---
-    text = text.strip()
-
-    # --- LOGIC ---
-    text = unicodedata.normalize('NFKD', text)
-    text = text.encode('ASCII', 'ignore').decode('utf-8')
-
-    if lower: text = text.lower()
-
-    text = re.sub(rf"[^a-z0-9\s{VAR['valid_chars']}]", '', text)
-    text = re.sub(r'\s+', ' ', text)
-
-    # --- RETURN ---
-    return text
-
-def strip_whitespaces(text):
-    """
-    Removes all whitespace characters from a string and returns the cleaned result.
-
-    Args:
-        text (str): The input text to process.
-
-    Returns:
-        str: The input text with all whitespace characters removed.
-    """
-    return re.sub(r'\s+', '', text)
-
-def str2float(number_str):
-    """
-    Converts a number string with commas into a float. If a numeric type is
-    provided instead of a string, it is returned as a float. Returns None
-    for unsupported types or invalid inputs.
-
-    Args:
-        number_str (str | int | float | complex): A number or string representing
-            a number that may include commas (e.g., '2,382').
-
-    Returns:
-        float | None: Parsed float value, or None if the input is invalid.
-    
-    Raises:
-        ValueError: If the string is not a valid float after removing commas.
-    """
-    
-    if isinstance(number_str, str):
-        cleaned = number_str.strip().replace(',', '')
-        return float(cleaned)
-    elif isinstance(number_str, (int, float, complex)):
-        return float(number_str)
-
-def str2bool(value):
-    """
-    Convert a string input to a boolean value or None.
-
-    Args:
-        value (str): The input string to convert.
-
-    Returns:
-        bool or None: The converted boolean value, or None if input is unrecognized.
-    """
-
-    if isinstance(value, bool):
-        return value
-    value = str(value).strip().lower()
-    if value in {'true', 'yes', '1', 'y'}:
-        return True
-    elif value in {'false', 'no', '0', 'n'}:
-        return False
-    return None
-
-# ---------- Dictionaries ----------
-
-def lowercase_keys_in_dict(target_dict: dict, keys_to_lowercase: list) -> None:
-    """
-    Converts specific keys inside nested dictionaries of a main dictionary to lowercase.
-
-    Args:
-        target_dict (dict): The outer dictionary whose inner dictionaries will be processed.
-        keys_to_lowercase (list): List of target key names to match (case-insensitive) and convert to lowercase.
-
-    """
-    for inner_dict in target_dict.values():
-        keys_to_fix = [key for key in inner_dict.keys() if key.lower() in keys_to_lowercase]
-        for key in keys_to_fix:
-            lower_key = key.lower()
-            if lower_key != key:
-                inner_dict[lower_key] = inner_dict.pop(key)
-
 
 #%% === User Interaction ===
 
 # ---------- Messages ----------
+
 def message_warning(message: str) -> None:
     """
     Log a formatted warning message using the configured bordered logger.
@@ -259,150 +164,246 @@ def dotted_line_fill(prefix: str, suffix: str) -> str:
     return result
 
 
-#%% === TO LEAVE - DIROPS ===
+#%% === Variables Manipulations ===
 
-def path_fix(file_path: str) -> str:
+# ---------- Strings ----------
+
+def str_normalize(text: str,lower=False) -> str:
     """
-    Normalize and convert file paths for compatibility between Windows and Linux.
-
-    On Linux, converts Windows-style paths (e.g., D:\\...) to /mnt/d/...
-    On Windows, converts WSL paths (/mnt/d/...) to D:\\...
-    Cleans special characters and redundant separators.
+    Normalize a string by converting to lowercase, stripping whitespace,
+    and collapsing internal whitespace to a single space.
 
     Args:
-        file_path (str): The file path to normalize and convert.
+        text (str): The string to normalize.
 
     Returns:
-        str: A normalized and converted file path.
-
-    Raises:
-        TypeError: If the input is not a string.
+        str: A normalized version of the input string.
     """
-    if not isinstance(file_path, str):
-        message_error("The path must be a string.")
-        return None
+    if not isinstance(text, str):
+        message_error(f"Not a string variable: {text}")
+        return text
 
-    system = platform.system().lower()
+    # --- SETUP AND VALIDATION ---
+    text = text.strip()
 
-    # Cleaning up
-    file_path = file_path.strip()
-    file_path = re.sub(r'[. ]+$', '', file_path)
-    file_path = re.sub(r"[<>\"'|?*\x00-\x1F]", '', file_path)
-    file_path = re.sub(r'[\\/]+', os.sep, file_path)
+    # --- LOGIC ---
+    text = unicodedata.normalize('NFKD', text)
+    text = text.encode('ASCII', 'ignore').decode('utf-8')
 
-    if system == "linux" and re.match(r'^[a-zA-Z]:[\\/]', file_path):
-        drive_letter = file_path[0].lower()
-        sub_path = re.sub(r'^[a-zA-Z]:[\\/]', '', file_path)
-        return f"/mnt/{drive_letter}/{sub_path}".replace('\\', '/')
+    if lower: text = text.lower()
 
-    if system == "windows" and re.match(r'^/mnt/[a-z]/', file_path):
-        drive_letter = file_path[5].upper()
-        sub_path = file_path[7:]
-        return f"{drive_letter}:\\" + sub_path.replace('/', '\\')
+    text = re.sub(rf"[^a-z0-9\s{VAR['valid_chars']}]", '', text)
+    text = re.sub(r'\s+', ' ', text)
 
-    return os.path.normpath(file_path)
+    # --- RETURN ---
+    return text
 
-def create_folders(path: str) -> None:
+def strip_whitespaces(text):
     """
-    Create all directories in the given path if they do not already exist.
+    Removes all whitespace characters from a string and returns the cleaned result.
 
     Args:
-        path (str): The folder path to create.
+        text (str): The input text to process.
 
     Returns:
-        None
+        str: The input text with all whitespace characters removed.
     """
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception as e:
-        message_error(f"Failed to create directories for path '{path}': {e}")
+    return re.sub(r'\s+', '', text)
 
-#%% === Excel Utilities ===
-
-def spreedsheet2dataframe(file_path: str, sheet_name: str = None, index_col: int = 0) -> pd.DataFrame:
+def str2float(number_str):
     """
-    Load an Excel or CSV file and convert it into a pandas DataFrame. Optionally reads
-    a specific sheet from Excel files and allows customization of the index column.
+    Converts a number string with commas into a float. If a numeric type is
+    provided instead of a string, it is returned as a float. Returns None
+    for unsupported types or invalid inputs.
 
     Args:
-        file_path (str): Path to the Excel or CSV file.
-        sheet_name (str, optional): Name of the sheet to read from Excel files.
-                                    Ignored for CSV files. Defaults to None.
-        index_col (int, optional): Column to set as index. Use None to keep default index.
-                                   Defaults to 0.
+        number_str (str | int | float | complex): A number or string representing
+            a number that may include commas (e.g., '2,382').
 
     Returns:
-        pd.DataFrame: DataFrame loaded from the file.
-
-    Raises:
-        SystemExit: If the file fails to load or is not valid.
-    """
-    file_path = validate_spreedsheet_path(file_path)
-
-    try:
-        if file_path.lower().endswith((".xlsx", ".xls")):
-            df = pd.read_excel(file_path, sheet_name=sheet_name, index_col=index_col)
-        elif file_path.lower().endswith(".csv"):
-            df = pd.read_csv(file_path, index_col=index_col)
-    except Exception as e:
-        message_exit(f"Failed to load spreadsheet file: {e}")
-
-    return df
-
-def validate_spreedsheet_path(file_path: str) -> bool:
-    """
-    Validate whether the given file path points to a valid Excel file.
-
-    Args:
-        file_path (str): Path to the file to validate.
-
-    Returns:
-        bool: True if the file exists and has a valid Excel extension, False otherwise.
-    """
-    ask_message = "Please enter a valid Excel file path: "
-    file_path = path_fix(file_path)
+        float | None: Parsed float value, or None if the input is invalid.
     
-    u=0
-    while not isinstance(file_path, str):
-        if u>0:message_error("The file path must be a string.")
-        file_path = path_fix(request_input(ask_message))
-        u+=1
-
-    valid_extensions = (".xlsx", ".xls",".csv")
-
-    while not (os.path.isfile(file_path) and file_path.lower().endswith(valid_extensions)):
-        if not os.path.isfile(file_path):
-            message_error("The file does not exist.")
-        else:
-            message_error("\n".join([
-                "The file does not have a valid spreedsheet extension.",
-                f"The valied file formats: {valid_extensions}"]))
-        file_path = path_fix(request_input(ask_message))
-
-    return file_path
-
-def safe_append_to_excel(filename, df, sheet_name):
-    """
-    Writes or appends a DataFrame to an Excel file under the given sheet name.
-
-    If the file does not exist, it creates it.
-    If the file exists, it adds or replaces the specified sheet.
-
-    Args:
-        filename (str): Path to the Excel file.
-        df (pd.DataFrame): DataFrame to write.
-        sheet_name (str): Name of the sheet to create/replace.
+    Raises:
+        ValueError: If the string is not a valid float after removing commas.
     """
     
-    if os.path.exists(filename):
-        task = 'updated'
-        # Append mode + safe sheet handling
-        with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=True)
-    else:
-        task = 'created'
-        # Create new file (no need for if_sheet_exists)
-        with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=True)
+    if isinstance(number_str, str):
+        cleaned = number_str.strip().replace(',', '')
+        return float(cleaned)
+    elif isinstance(number_str, (int, float, complex)):
+        return float(number_str)
 
-    print(f"Excel {task}: {filename}")
+def str2bool(value):
+    """
+    Convert a string input to a boolean value or None.
+
+    Args:
+        value (str): The input string to convert.
+
+    Returns:
+        bool or None: The converted boolean value, or None if input is unrecognized.
+    """
+
+    if isinstance(value, bool):
+        return value
+    value = str(value).strip().lower()
+    if value in {'true', 'yes', '1', 'y'}:
+        return True
+    elif value in {'false', 'no', '0', 'n'}:
+        return False
+    return None
+
+# -----> Validations
+
+def validate_string(value: str, allowed_options: list[str], case_sensitive: bool = False) -> str:
+    """
+    Validates whether a string matches one of the allowed options. Prompts until valid.
+
+    Args:
+        value (str): The input string to validate.
+        allowed_options (list[str]): A list of acceptable string values.
+        case_sensitive (bool): Whether comparison is case-sensitive. Default is False.
+
+    Returns:
+        str: A validated string from the allowed options.
+    """
+    if not isinstance(allowed_options, list) or not all(isinstance(opt, str) for opt in allowed_options):
+        message_exit("allowed_options must be a list of strings.")
+
+    val_to_check = value if case_sensitive else value.lower()
+    options = allowed_options if case_sensitive else [opt.lower() for opt in allowed_options]
+
+    if val_to_check not in options:
+        message_exit(f"Invalid option: {value}.\nAllowed options are: {', '.join(allowed_options)}")
+
+# ---------- Dictionaries ----------
+
+def lowercase_keys_in_dict(target_dict: dict, keys_to_lowercase: list) -> None:
+    """
+    Converts specific keys inside nested dictionaries of a main dictionary to lowercase.
+
+    Args:
+        target_dict (dict): The outer dictionary whose inner dictionaries will be processed.
+        keys_to_lowercase (list): List of target key names to match (case-insensitive) and convert to lowercase.
+
+    """
+    for inner_dict in target_dict.values():
+        keys_to_fix = [key for key in inner_dict.keys() if key.lower() in keys_to_lowercase]
+        for key in keys_to_fix:
+            lower_key = key.lower()
+            if lower_key != key:
+                inner_dict[lower_key] = inner_dict.pop(key)
+
+
+#%% === Loaders and Outputs===
+
+# ---------- Spreadsheets ----------
+
+def load_spreadsheet(
+        file_path: str, tab_name: str = None,
+        header_1throw: bool = True, index_1thcol: bool = False, index_key: bool = False,
+        dtype: str = "df"):
+    """
+    Reads a spreadsheet file (CSV or Excel) and returns its content as either a
+    pandas DataFrame or a nested dictionary with flexible indexing and headers.
+
+    Args:
+        file_path (str): Path to the spreadsheet file.
+        tab_name (str, optional): Sheet name for Excel files.
+        header_first_row (bool): If True, uses the first row as headers.
+        index_first_col (bool): If True, uses the first column as index.
+        use_index_as_key (bool): If True and dtype is 'dict', orients dictionary by row index.
+        dtype (str): Output format; "df" for DataFrame, "dict" for dictionary.
+
+    Returns:
+        dict or pd.DataFrame: Parsed content in the specified output format.
+    """
+    
+    # --- SETUP AND VALIDATION ---
+
+    dtype_options = ["df","dict"]
+
+    ext_csv = VAR["ss_extensions"]["csv"]
+    ext_exc = VAR["ss_extensions"]["excel"]
+    supported_exts = ext_csv + ext_exc
+
+    header = "infer" if header_1throw else None
+    index_col = 0 if index_1thcol else False
+    orient = 'index' if index_key else 'dict'
+
+    validate_string(dtype,dtype_options)
+
+    validated_path  = dirops.validate_file_path(file_path, supported_extensions=supported_exts)
+    
+    suffix = Path(validated_path).suffix
+
+    # --- LOGIC ---
+    if suffix in ext_csv:
+        df = pd.read_csv(
+            validated_path,
+            header=header, index_col=index_col
+            )
+    elif suffix in ext_exc:
+        df = pd.read_excel(
+            validated_path, sheet_name=tab_name,
+            header=header, index_col=index_col
+            )
+
+    # --- RETURN ---
+    match dtype:
+        case "df":
+            return df
+        case "dict":
+            return df.to_dict(orient=orient)
+        case _:
+            message_exit("")
+
+# ---------- Loaders ----------
+
+def excel_safe_append(file_path: str, sheet_name: str, data_frame: pd.DataFrame) -> None:
+    """
+    Writes or appends a DataFrame to an Excel file with a specified sheet name.
+
+    If the file exists, it updates or replaces the given sheet.
+    If the file does not exist, it creates a new Excel file.
+
+    Args:
+        file_path (str): Path to the Excel file to create or update.
+        sheet_name (str): Name of the sheet to create or replace in the Excel file.
+        data_frame (pd.DataFrame): DataFrame to write to the Excel sheet.
+    """
+    file_exists = os.path.exists(file_path)
+    write_mode = 'a' if file_exists else 'w'
+    sheet_settings = {'if_sheet_exists': 'replace'} if file_exists else {}
+
+    with pd.ExcelWriter(file_path, engine='openpyxl', mode=write_mode, **sheet_settings) as writer:
+        data_frame.to_excel(writer, sheet_name=sheet_name, index=True)
+
+    print(f"Excel {'updated' if file_exists else 'created'}: {file_path}")
+
+
+#%% === Closing ===
+
+# --- build the public API: only functions/classes defined here ---
+def _build_public():
+    import inspect
+    defined_after = set(globals().keys()) - _IMPORTED_NAMES
+    out = []
+    for name in defined_after:
+        if name == "__all__" or name.startswith("_"):
+            continue
+        obj = globals()[name]
+        # only code you wrote: functions/classes (no modules, no constants)
+        if inspect.isfunction(obj) or inspect.isclass(obj):
+            # ensure it’s defined in THIS module, not re-imported
+            if getattr(obj, "__module__", __name__) == __name__:
+                out.append(name)
+    return sorted(out)
+
+__all__ = _build_public()
+
+# Make dir(module) show only the public surface
+def __dir__(): return sorted(__all__)
+
+# tidy up internals
+del _build_public, _IMPORTED_NAMES

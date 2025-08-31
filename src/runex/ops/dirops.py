@@ -10,6 +10,7 @@ import pathlib
 
 from . import utils
 
+_IMPORTED_NAMES = set(globals().keys())
 #%% === Dirs Manipulation ===
 
 # ---------- Public ----------
@@ -299,7 +300,46 @@ def locate_files_by_name_pattern(folder_path, filename):
     files = list(folder.glob(f'*{filename}*'))
     return files
 
-    
+#%% === Checks and Validations ===
+
+# ---------- Public ----------
+
+def validate_file_path(file_path: str, supported_extensions: list[str] = None) -> str:
+    """
+    Repeatedly prompts until a valid file path is provided. Optionally validates file extension.
+
+    Args:
+        file_path (str): Initial path to validate.
+        supported_extensions (list[str], optional): List of valid extensions or a string extension.
+
+    Returns:
+        str: A validated file path.
+    """
+    file_path = utils.path_fix(file_path)
+
+    while True:
+        if not isinstance(file_path, str):
+            utils.message_error("The path must be a string.")
+        elif not os.path.exists(file_path):
+            utils.message_error(f"File not found: {file_path}")
+        elif not os.path.isfile(file_path):
+            utils.message_error(f"Expected a file but got a directory: {file_path}")
+        elif isinstance(supported_extensions, (list, str)):
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+            if isinstance(supported_extensions, str):
+                supported_extensions = [supported_extensions]
+            if ext not in supported_extensions:
+                utils.message_error(f"Unsupported file extension: {ext}")
+            else:
+                break
+        else:
+            break
+
+        file_path = utils.path_fix(utils.request_input("Please enter a valid file path: "))
+
+    return file_path
+
 #%% === Support ===
 
 # ---------- Public ----------
@@ -560,3 +600,28 @@ def _check_input_str_list(data):
 
         utils.message_exit("Invalid input format - the variable must be a str or list of strings")
 
+#%% === Closing ===
+
+# --- build the public API: only functions/classes defined here ---
+def _build_public():
+    import inspect
+    defined_after = set(globals().keys()) - _IMPORTED_NAMES
+    out = []
+    for name in defined_after:
+        if name == "__all__" or name.startswith("_"):
+            continue
+        obj = globals()[name]
+        # only code you wrote: functions/classes (no modules, no constants)
+        if inspect.isfunction(obj) or inspect.isclass(obj):
+            # ensure it’s defined in THIS module, not re-imported
+            if getattr(obj, "__module__", __name__) == __name__:
+                out.append(name)
+    return sorted(out)
+
+__all__ = _build_public()
+
+# Make dir(module) show only the public surface
+def __dir__(): return sorted(__all__)
+
+# tidy up internals
+del _build_public, _IMPORTED_NAMES

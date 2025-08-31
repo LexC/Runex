@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runex"
-version = "0.1.6" #### VERSION
+version = "0.1.7" #### VERSION
 
 description = "Minimal, typed utility functions—symbols you can run."
 authors = [{ name = "Lex" }]
