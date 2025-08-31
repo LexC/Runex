@@ -8,10 +8,23 @@ version = "0.1.0"
 description = "Minimal, typed utility functions—symbols you can run."
 authors = [{ name = "Lex" }]
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "pandas",
+    "openpyxl",
+    "xlrd",
+    "numpy",
+    "scipy",
+    "seaborn",
+    "matplotlib",
+]
+
+[project.urls]
+homepage = "https://github.com/lex/runex"
 
 [tool.setuptools]
+package-dir = {"" = "src"}
 packages = { find = { where = ["src"] } }
 
 [tool.setuptools.package-data]

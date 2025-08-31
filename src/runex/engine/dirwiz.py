@@ -1,8 +1,8 @@
 #%% === Libraries ===
 import os
 
-from utils import dirops
-from utils import general_funcs as gf
+from ..ops import dirops
+from ..ops import general_functions as gf
 
 #%% === General Tools ===
 

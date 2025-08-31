@@ -8,7 +8,7 @@ import stat
 import shutil
 import pathlib
 
-from cantrips import general_functions as gf
+from . import general_functions as gf
 
 #%% === Dirs Manipulation ===
 
