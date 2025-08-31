@@ -287,7 +287,7 @@ def path_fix(file_path: str) -> str:
     # Cleaning up
     file_path = file_path.strip()
     file_path = re.sub(r'[. ]+$', '', file_path)
-    file_path = re.sub(rf'[<>"{"'"}|?*\x00-\x1F]', '', file_path)
+    file_path = re.sub(r"[<>\"'|?*\x00-\x1F]", '', file_path)
     file_path = re.sub(r'[\\/]+', os.sep, file_path)
 
     if system == "linux" and re.match(r'^[a-zA-Z]:[\\/]', file_path):
