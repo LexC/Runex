@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runex"                # Your internal project name — doesn't matter to GitHub
-version = "0.1.0"
+version = "0.1.1"
 description = "Minimal, typed utility functions—symbols you can run."
 authors = [{ name = "Lex" }]
 readme = "README.md"
