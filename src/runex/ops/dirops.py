@@ -37,7 +37,7 @@ def run_delete(dir_list:list,skip_confimation=False):
     Args:
         dir_list (list): a list with directories
     """
-    question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{"\n".join(dir_list)}\n"
+    question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{'\n'.join(dir_list)}\n"
     confirmation = skip_confimation if skip_confimation else utils.get_user_confirmation(question)
 
     if confirmation:    
@@ -96,7 +96,7 @@ def run_unpack_all_in_folder(dir_list, recursive=False,override=False):
         override = utils.get_user_confirmation("Do you want to overwrite existing files?")
 
     for i,src in enumerate(dir_list):
-        message = "\n   ".join([f"{utils.VAR["print_tast_div"]}Task {i+1}/{len(dir_list)}",src,""]) 
+        message = "\n   ".join([f"{utils.VAR['print_tast_div']}Task {i+1}/{len(dir_list)}",src,""]) 
         print(message)
 
         count = 0
