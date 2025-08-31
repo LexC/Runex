@@ -1,3 +1,6 @@
+"""
+UNDER CONSTRUCTION!!!!
+"""
 #%% === Libraries ===
 import os
 
@@ -78,7 +81,7 @@ def determine_option(option):
         question = "\n".join(
             ["\nThese are the available tasks"] +
             option_messages +
-            [f"\nEnter your choice (1-{len(VAR["options"])}): "]
+            [f"\nEnter your choice (1-{len(VAR['options'])}): "]
         )
         option = str(input(question)).strip()
 

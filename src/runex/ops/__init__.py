@@ -1,8 +1,8 @@
-from .dirops import *
-from .load import *
-from .utils import *
+"""
+runex.ops — operations utilities.
+Contains dirops, load, utils.
+"""
 
-__all__ = []
-__all__ += dirops.__all__
-__all__ += load.__all__
-__all__ += utils.__all__
+from . import dirops, load, utils
+
+__all__ = ["dirops", "load", "utils"]

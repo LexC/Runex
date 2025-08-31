@@ -1,12 +1,18 @@
 """
-Runex — Minimal, typed utility functions.
-Import once, access everything.
+Runex — Minimal utility toolkit.
+Strict hierarchy + selected top-level shortcuts.
 """
-# Re-export everything from engine and ops
-from .engine import *   # noqa
-from .ops import *      # noqa
 
-__all__ = [
-    *engine.__all__,
-    *ops.__all__,
-]
+from . import ops
+
+def DirWiz(*args, **kwargs):
+    """
+    Top-level shortcut to the directory wizard main entrypoint.
+
+    Equivalent to: runex.engine.dirwiz.main(*args, **kwargs)
+    Imported lazily to avoid exposing `runex.engine` at the package root.
+    """
+    from .engine.dirwiz import main  # local import prevents `runex.engine` from appearing
+    return main(*args, **kwargs)
+
+__all__ = ["ops", "DirWiz"]

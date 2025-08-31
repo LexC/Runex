@@ -1,6 +1,8 @@
-# Import all symbols from files
-from .dirwiz import *
+"""
+runex.engine — core engines.
+Contains dirwiz.
+"""
 
-# Define what this subpackage exports
-__all__ = []
-__all__ += dirwiz.__all__
+from . import dirwiz
+
+__all__ = ["dirwiz"]
