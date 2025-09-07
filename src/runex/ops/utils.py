@@ -16,6 +16,8 @@ import unicodedata
 import pandas as pd
 
 from pathlib import Path
+from copy import deepcopy, copy
+
 
 #-- Custom packges
 from . import dirops
@@ -58,14 +60,12 @@ def global_variables():
     _configure_logger(error_border)
 
     config = {
-        "valid_chars": r"_.|()[]{}-",
         "ss_extensions": {
             "excel": [".xls", ".xlsx"],
             "csv": [".csv"]
         },
     }
     return config
-
 VAR = global_variables()
 
 #%% === User Interaction ===
@@ -119,7 +119,7 @@ def request_input(prompt_message: str) -> str:
 
     return user_input
 
-def get_user_confirmation(question: str):
+def request_confirmation(question: str):
     """
     Print a message for the user, and ask for an 'yes' or 'no' input
 
@@ -137,6 +137,64 @@ def get_user_confirmation(question: str):
         
         if response is not None: return response
         else: print("Please enter 'yes' or 'no'.")
+
+def request_option(options, descriptions: list = None, loop: bool = True) -> str:
+    """
+    Display a list or dictionary of options with optional descriptions and
+    prompt the user to select one by number or key/string.
+
+    Args:
+        options (list | dict): A list of option strings or a dictionary with keys as
+            option identifiers and values as descriptions.
+        descriptions (list, optional): A list of descriptions corresponding to each
+            list option, used only if `options` is a list.
+        loop (bool, optional): If True, keep prompting until a valid option is
+            entered. If False, prompt once and return None on invalid input.
+
+    Returns:
+        str: The selected key (from dict) or string (from list).
+        None: If `loop` is False and the input is invalid.
+    """
+    # --- SETUP AND VALIDATION ---
+    if isinstance(options, dict):
+        if not options:
+            message_exit("The input dictionary cannot be empty.")
+        keys = list(options.keys())
+        items = list(options.items())
+    elif isinstance(options, list):
+        if not options:
+            message_exit("The input list cannot be empty.")
+        keys = options
+        items = list(zip(options, descriptions)) if descriptions else [(opt, "") for opt in options]
+    else:
+        message_exit("Options must be a list or a dictionary.")
+
+    # --- DISPLAY OPTIONS ---
+    print("Please choose from the following options:")
+    for idx, (key, desc) in enumerate(items, 1):
+        display = f"\t{idx}. {key}"
+        if desc:
+            display += f": {desc}"
+        print(display)
+
+    # --- INPUT LOOP ---
+    while True:
+        user_input = request_input("Select by number or name/key: ").strip()
+
+        # Check if numeric input refers to index
+        if user_input.isdigit():
+            index = int(user_input) - 1
+            if 0 <= index < len(keys):
+                return keys[index]
+
+        # Check if input is a direct match to a key/string
+        if user_input in keys:
+            return user_input
+
+        if not loop:
+            print("Invalid selection.")
+            return None
+        print("Invalid selection. Please try again.")
 
 # ---------- Screens ----------
 
@@ -166,18 +224,33 @@ def dotted_line_fill(prefix: str, suffix: str) -> str:
 
 #%% === Variables Manipulations ===
 
-# ---------- Strings ----------
+# ---------- Strings and lists ----------
 
-def str_normalize(text: str,lower=False) -> str:
+def str_normalize(text: str, lower: bool = False, valid_chars: str = "_.|()[]{}-") -> str:
     """
-    Normalize a string by converting to lowercase, stripping whitespace,
-    and collapsing internal whitespace to a single space.
+    Normalize a string by standardizing Unicode, cleaning unwanted characters, 
+    and formatting whitespace.
+
+    The normalization process includes:
+        - Converting Unicode characters to their closest ASCII equivalent 
+          (e.g., "é" → "e").
+        - Optionally converting all characters to lowercase.
+        - Stripping leading and trailing whitespace.
+        - Collapsing multiple internal whitespace characters into a single space.
+        - Removing all characters except alphanumeric and those explicitly 
+          provided in `valid_chars`.
 
     Args:
         text (str): The string to normalize.
+        lower (bool, optional): If True, convert the string to lowercase.
+            Defaults to False.
+        valid_chars (str, optional): String of additional characters to keep 
+            (besides alphanumeric and whitespace). Defaults to "_.|()[]{}-".
 
     Returns:
-        str: A normalized version of the input string.
+        str: A cleaned and normalized version of the input string. If the 
+        input is not a string, returns the input unchanged after logging an 
+        error message.
     """
     if not isinstance(text, str):
         message_error(f"Not a string variable: {text}")
@@ -190,9 +263,11 @@ def str_normalize(text: str,lower=False) -> str:
     text = unicodedata.normalize('NFKD', text)
     text = text.encode('ASCII', 'ignore').decode('utf-8')
 
-    if lower: text = text.lower()
+    if lower:
+        text = text.lower()
 
-    text = re.sub(rf"[^a-z0-9\s{VAR['valid_chars']}]", '', text)
+    # Keep only alphanumeric, whitespace, and allowed special characters
+    text = re.sub(rf"[^a-zA-Z0-9\s{re.escape(valid_chars)}]", ' ', text)
     text = re.sub(r'\s+', ' ', text)
 
     # --- RETURN ---
@@ -253,6 +328,67 @@ def str2bool(value):
         return False
     return None
 
+def match_terms_to_text(
+        text: str, search_terms: list, normalize: bool = True,
+        valid_chars: str = ".&+#%$€£"
+        ) -> bool:
+    """
+    Check if any word or phrase from a given list is present in the text, 
+    with optional normalization.
+
+    When `normalize` is True, both the text and search terms are processed 
+    using `str_normalize`. See `str_normalize` for details on how 
+    normalization is performed.
+
+    Args:
+        text (str): The input text to search within.
+        search_terms (list): List of words or phrases to check for in the text.
+        normalize (bool, optional): Whether to normalize text and terms before 
+            matching. Defaults to True.
+        valid_chars (str, optional): Additional characters to keep during 
+            normalization. Only applies if `normalize=True`. 
+            Defaults to ".&-+#%$€£".
+
+    Returns:
+        bool: True if any word or phrase from `search_terms` is found in `text`,
+        otherwise False.
+    """
+    # --- SETUP AND VALIDATION ---
+    if not isinstance(text, str) or not isinstance(search_terms, list):
+        return False
+
+    if normalize:
+        # Normalize input text and search terms
+        normalized_text = str_normalize(text, lower=True, valid_chars=valid_chars)
+        normalized_terms = [
+            str_normalize(term, lower=True, valid_chars=valid_chars) 
+            for term in search_terms
+        ]
+    else:
+        normalized_text = text
+        normalized_terms = search_terms
+
+    # --- LOGIC ---
+    for term in normalized_terms:
+        escaped_pattern = re.escape(term)
+
+        if " " in term:
+            # Match phrase directly
+            if re.search(escaped_pattern, normalized_text):
+                return True
+        else:
+            # Match whole word only
+            if re.search(rf"\b{escaped_pattern}\b", normalized_text):
+                return True
+
+    # --- RETURN ---
+    return False
+
+
+
+
+
+
 # -----> Validations
 
 def validate_string(value: str, allowed_options: list[str], case_sensitive: bool = False) -> str:
@@ -299,10 +435,9 @@ def lowercase_keys_in_dict(target_dict: dict, keys_to_lowercase: list) -> None:
 
 # ---------- Spreadsheets ----------
 
-def load_spreadsheet(
-        file_path: str, tab_name: str = None,
+def load_spreadsheet(file_path: str, tab_name: str = None,
         header_1throw: bool = True, index_1thcol: bool = False, index_key: bool = False,
-        dtype: str = "df"):
+        dtype: str = "df", **kwargs):
     """
     Reads a spreadsheet file (CSV or Excel) and returns its content as either a
     pandas DataFrame or a nested dictionary with flexible indexing and headers.
@@ -327,7 +462,7 @@ def load_spreadsheet(
     ext_exc = VAR["ss_extensions"]["excel"]
     supported_exts = ext_csv + ext_exc
 
-    header = "infer" if header_1throw else None
+    header = 0 if header_1throw else None
     index_col = 0 if index_1thcol else False
     orient = 'index' if index_key else 'dict'
 
@@ -341,13 +476,13 @@ def load_spreadsheet(
     if suffix in ext_csv:
         df = pd.read_csv(
             validated_path,
-            header=header, index_col=index_col
-            )
+            header=header, index_col=index_col, 
+            **kwargs)
     elif suffix in ext_exc:
         df = pd.read_excel(
             validated_path, sheet_name=tab_name,
-            header=header, index_col=index_col
-            )
+            header=header, index_col=index_col, 
+            **kwargs)
 
     # --- RETURN ---
     match dtype:

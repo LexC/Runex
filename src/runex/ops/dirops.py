@@ -41,7 +41,7 @@ def run_delete(dir_list:list,skip_confimation=False):
     dirs = "\n".join(dir_list)
     question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{dirs}\n"
 
-    confirmation = skip_confimation if skip_confimation else utils.get_user_confirmation(question)
+    confirmation = skip_confimation if skip_confimation else utils.request_confirmation(question)
 
     if confirmation:    
         for dir in dir_list:
@@ -79,7 +79,7 @@ def run_unpack(dir_list:list,override:bool = None, another_unpack:int = None):
     """
     
     if override == None:
-        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.request_confirmation("Do you want to overwrite existing files?")
 
     for row in dir_list:
         
@@ -96,7 +96,7 @@ def run_unpack(dir_list:list,override:bool = None, another_unpack:int = None):
 def run_unpack_all_in_folder(dir_list, recursive=False,override=False):
     
     if override == None:
-        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.request_confirmation("Do you want to overwrite existing files?")
 
     for i,src in enumerate(dir_list):
         message = "\n   ".join([f"{utils.VAR['print_tast_div']}Task {i+1}/{len(dir_list)}",src,""]) 
@@ -161,10 +161,10 @@ def _run_copy_or_move(option:str, dir_dict:dict,override:bool = None):
     
     # Confirming to the user
     if override == None:
-        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.request_confirmation("Do you want to overwrite existing files?")
     elif type(override) != bool:
         utils.message_error('The override option must be a boolian')
-        override = utils.get_user_confirmation("Do you want to overwrite existing files?")
+        override = utils.request_confirmation("Do you want to overwrite existing files?")
 
 
     for index, item in enumerate(dir_dict.values()):
@@ -315,7 +315,7 @@ def validate_file_path(file_path: str, supported_extensions: list[str] = None) -
     Returns:
         str: A validated file path.
     """
-    file_path = utils.path_fix(file_path)
+    file_path = fix_path(file_path)
 
     while True:
         if not isinstance(file_path, str):
@@ -336,7 +336,7 @@ def validate_file_path(file_path: str, supported_extensions: list[str] = None) -
         else:
             break
 
-        file_path = utils.path_fix(utils.request_input("Please enter a valid file path: "))
+        file_path = fix_path(utils.request_input("Please enter a valid file path: "))
 
     return file_path
 
@@ -344,7 +344,7 @@ def validate_file_path(file_path: str, supported_extensions: list[str] = None) -
 
 # ---------- Public ----------
 
-def fixpath(path:str):
+def fix_path(path:str):
     """
     Make the path compatible with the operating system and correct common path definition errors.
 
