@@ -16,8 +16,6 @@ import unicodedata
 import pandas as pd
 
 from pathlib import Path
-from copy import deepcopy, copy
-
 
 #-- Custom packges
 from . import dirops
@@ -330,7 +328,7 @@ def str2bool(value):
 
 def match_terms_to_text(
         text: str, search_terms: list, normalize: bool = True,
-        valid_chars: str = ".&+#%$€£"
+        valid_chars: str = None
         ) -> bool:
     """
     Check if any word or phrase from a given list is present in the text, 
@@ -347,7 +345,7 @@ def match_terms_to_text(
             matching. Defaults to True.
         valid_chars (str, optional): Additional characters to keep during 
             normalization. Only applies if `normalize=True`. 
-            Defaults to ".&-+#%$€£".
+            If None, the default of `str_normalize` is used. Defaults to None.
 
     Returns:
         bool: True if any word or phrase from `search_terms` is found in `text`,
@@ -359,35 +357,31 @@ def match_terms_to_text(
 
     if normalize:
         # Normalize input text and search terms
-        normalized_text = str_normalize(text, lower=True, valid_chars=valid_chars)
-        normalized_terms = [
-            str_normalize(term, lower=True, valid_chars=valid_chars) 
-            for term in search_terms
-        ]
-    else:
-        normalized_text = text
-        normalized_terms = search_terms
+        if valid_chars is None:
+            text = str_normalize(text, lower=True)
+            terms = [str_normalize(term, lower=True) for term in search_terms]
+        else:
+            text = str_normalize(text, lower=True, valid_chars=valid_chars)
+            terms = [
+                str_normalize(term, lower=True, valid_chars=valid_chars)
+                for term in search_terms
+            ]
 
     # --- LOGIC ---
-    for term in normalized_terms:
+    for term in terms:
         escaped_pattern = re.escape(term)
 
         if " " in term:
             # Match phrase directly
-            if re.search(escaped_pattern, normalized_text):
+            if re.search(escaped_pattern, text):
                 return True
         else:
             # Match whole word only
-            if re.search(rf"\b{escaped_pattern}\b", normalized_text):
+            if re.search(rf"\b{escaped_pattern}\b", text):
                 return True
 
     # --- RETURN ---
     return False
-
-
-
-
-
 
 # -----> Validations
 
