@@ -38,6 +38,7 @@ def _configure_logger(border: str) -> None:
             return f"{border}{record.levelname}: {base_message}{border}"
 
     handler = logging.StreamHandler()
+    
     handler.setFormatter(BorderedFormatter("%(message)s"))
 
     logger = logging.getLogger()
@@ -327,34 +328,44 @@ def str2bool(value):
     return None
 
 def match_terms_to_text(
-        text: str, search_terms: list, normalize: bool = True,
-        valid_chars: str = None
+        text: str,
+        search_terms: list,
+        normalize: bool = True,
+        valid_chars: str = None,
+        silent: bool = True,
+        ignore_terms: list | str = 'default'
         ) -> bool:
     """
-    Check if any word or phrase from a given list is present in the text, 
-    with optional normalization.
-
-    When `normalize` is True, both the text and search terms are processed 
-    using `str_normalize`. See `str_normalize` for details on how 
-    normalization is performed.
+    Check if any term or phrase from `search_terms` appears in `text`, with
+    optional normalization, an ignore list, and optional printing of matches.
 
     Args:
         text (str): The input text to search within.
-        search_terms (list): List of words or phrases to check for in the text.
-        normalize (bool, optional): Whether to normalize text and terms before 
-            matching. Defaults to True.
-        valid_chars (str, optional): Additional characters to keep during 
-            normalization. Only applies if `normalize=True`. 
-            If None, the default of `str_normalize` is used. Defaults to None.
+        search_terms (list): Terms or phrases to look for in the text.
+        normalize (bool, optional): Whether to normalize both the text and the
+            terms using `str_normalize` before matching. Defaults to True.
+        valid_chars (str, optional): Extra characters to preserve during
+            normalization (used only when `normalize` is True). If None, the
+            default behavior of `str_normalize` is used. Defaults to None.
+        silent (bool, optional): If False, print all matched terms. If True,
+            do not print matches. Defaults to True.
+        ignore_terms (list or str, optional): Terms to skip during matching.
+            Use 'default' to ignore empty and space-only terms. Defaults to
+            'default'.
 
     Returns:
-        bool: True if any word or phrase from `search_terms` is found in `text`,
-        otherwise False.
+        bool: True if any (non-ignored) term is found; otherwise False.
+
     """
     # --- SETUP AND VALIDATION ---
     if not isinstance(text, str) or not isinstance(search_terms, list):
         return False
+    if ignore_terms == 'default': ignore_terms = [' ', '']
+    elif isinstance(ignore_terms, str): ignore_terms = [ignore_terms]
+    else:
+        message_error("ignore_terms must be 'default', str, or list. Default values will be applied")
 
+    
     if normalize:
         # Normalize input text and search terms
         if valid_chars is None:
@@ -366,22 +377,29 @@ def match_terms_to_text(
                 str_normalize(term, lower=True, valid_chars=valid_chars)
                 for term in search_terms
             ]
+    else:
+        terms = search_terms
 
     # --- LOGIC ---
+    matches = []
     for term in terms:
+        if term in ignore_terms: continue  # skip ignored terms
+
         escaped_pattern = re.escape(term)
 
         if " " in term:
-            # Match phrase directly
             if re.search(escaped_pattern, text):
-                return True
+                matches.append(term)
         else:
-            # Match whole word only
             if re.search(rf"\b{escaped_pattern}\b", text):
-                return True
+                matches.append(term)
+
+    if matches and not silent:
+        print("Matched terms:", matches)
 
     # --- RETURN ---
-    return False
+    return bool(matches)
+
 
 # -----> Validations
 
@@ -456,9 +474,10 @@ def load_spreadsheet(file_path: str, tab_name: str = None,
     ext_exc = VAR["ss_extensions"]["excel"]
     supported_exts = ext_csv + ext_exc
 
-    header = 0 if header_1throw else None
-    index_col = 0 if index_1thcol else False
-    orient = 'index' if index_key else 'dict'
+    index_col = kwargs.pop("index_col", 0 if index_1thcol else False)
+    header = kwargs.pop("header", 0 if header_1throw else None)
+    orient = kwargs.pop("orient", 'index' if index_key else 'dict')
+
 
     validate_string(dtype,dtype_options)
 

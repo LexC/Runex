@@ -7,6 +7,7 @@ import re
 import stat
 import shutil
 import pathlib
+import unicodedata
 
 from . import utils
 
@@ -31,22 +32,51 @@ def run_mkdir(dir_list):
     for dir in dir_list:
         os.makedirs(dir, exist_ok=True)
 
-def run_delete(dir_list:list,skip_confimation=False):
+def run_delete(paths: str | list[str], skip_confimation: bool = False, force: bool = False) -> None:
     """
-    Deletes directories, including non-empty directories
+    Permanently delete files and folders (including non-empty directories).
 
     Args:
-        dir_list (list): a list with directories
+        paths (str | list[str]): Target path or list of paths to delete.
+        skip_confimation (bool): If True, delete without asking.
     """
-    dirs = "\n".join(dir_list)
-    question = f"Are you sure you want to Permanently Delete the selected the following directories:\n{dirs}\n"
+    # --- INPUT NORMALIZATION ---
+    if isinstance(paths, str):
+        targets = [paths]
+    elif isinstance(paths, list) and all(isinstance(p, str) for p in paths):
+        targets = paths
+    else:
+        raise TypeError("`paths` must be a str or list[str].")
 
+    # --- CONFIRMATION ---
+    listing = "\n".join(f"- {p}" for p in targets)
+    question = (
+        "Are you sure you want to Permanently Delete the selected the following directories:\n"
+        f"{listing}\n"
+    )
     confirmation = skip_confimation if skip_confimation else utils.request_confirmation(question)
 
-    if confirmation:    
-        for dir in dir_list:
+    if not confirmation:
+        return
 
-            shutil.rmtree(dir,onexc = _remove_readonly)
+    # --- DELETE ---
+    for path in targets:
+        p = fix_path(path)
+        if not (os.path.exists(p) or os.path.islink(p)):
+            continue  # skip non-existent (incl. dangling symlink handled below)
+
+        if os.path.islink(p) or os.path.isfile(p):
+            if force:
+                try:
+                    os.chmod(p, stat.S_IWUSR)
+                except Exception:
+                    pass
+            os.remove(p)
+        elif os.path.isdir(p):
+            if force:
+                shutil.rmtree(p, onerror=_remove_readonly)
+            else:
+                shutil.rmtree(p)
 
 def run_copy(dir_dict:dict,override:bool = None):
     _run_copy_or_move('cp', dir_dict, override)
@@ -94,54 +124,74 @@ def run_unpack(dir_list:list,override:bool = None, another_unpack:int = None):
                 _unpack_func(src,dst)
 
 def run_unpack_all_in_folder(dir_list, recursive=False,override=False):
-    
-    if override == None:
-        override = utils.request_confirmation("Do you want to overwrite existing files?")
+    """
+    Unpack all supported archive files found under each directory in `dir_list`.
 
-    for i,src in enumerate(dir_list):
-        message = "\n   ".join([f"{utils.VAR['print_tast_div']}Task {i+1}/{len(dir_list)}",src,""]) 
-        print(message)
+    When `recursive` is True, the directory tree is rescanned until no new
+    archives remain (handles nested archives). If `override` is None, the user
+    is prompted to decide whether to overwrite existing files.
+
+    Args:
+        dir_list (list[str]): Directories to scan for candidate archives.
+        recursive (bool, optional): If True, keep rescanning for newly created
+            archives. Defaults to False.
+        override (bool | None, optional): Overwrite behavior; if None, prompt
+            the user. Defaults to False.
+
+    Returns:
+        None
+    """
+    # --- SETUP AND VALIDATION ---
+    # Normalize override behavior: allow interactive prompt when set to None
+    if override is None:
+        override = utils.request_confirmation(
+            "Do you want to overwrite existing files?"
+        )
+    
+    # --- LOGIC ---
+    for idx, src in enumerate(dir_list, start=1):
+        print("\n   ".join([f"{'-'*50}/nTask {idx}/{len(dir_list)}", src, ""]))
 
         count = 0
-        
-        unpacked_dirs = []
-        if recursive:
-            files_unpacked = True
-            while files_unpacked:   
-                files_unpacked = False
+        processed_files = set()  
 
-                for dirpath, _, filenames in os.walk(src):
-                    for filename in filenames:
-                        
-                        file_path = os.path.join(dirpath,filename)
-                        valid_format,_ = _check_valid_unpack(file_path,silent=True)
-                        
-                        if valid_format and file_path not in unpacked_dirs:
-                            
-                            count+=1
-                            message = f"Unpacking {count:02}:\t{file_path}"
-                            print(message)
+        def scan_once() -> bool:
+            """Scan `src` once; unpack any valid, not-yet-processed archives.
+            Returns True if at least one file was unpacked in this pass."""
+            nonlocal count
+            changed = False
 
-                            run_unpack([[file_path]],override=override,another_unpack=1)
-                            print("|-> DONE\n")
-                            unpacked_dirs.append(file_path)
-                            files_unpacked = True
-        
-        else:
             for dirpath, _, filenames in os.walk(src):
                 for filename in filenames:
-                    
-                    file_path = os.path.join(dirpath,filename)
-                    valid_format,_ = _check_valid_unpack(file_path,silent=True)
-                    
-                    if valid_format and file_path not in unpacked_dirs:
-                        
-                        count+=1
-                        message = f"Unpacking {count:02}:\t{file_path}"
-                        print(message)
+                    file_path = os.path.join(dirpath, filename)
 
-                        run_unpack([[file_path]],override=override,another_unpack=1)
-                        unpacked_dirs.append(file_path)
+                    # Skip if already processed this run
+                    if file_path in processed_files:
+                        continue
+
+                    valid, _ = _check_valid_unpack(file_path, silent=True)
+                    if not valid:
+                        continue
+
+                    count += 1
+                    print(f"Unpacking {count:02}:\t{file_path}")
+                    # `run_unpack` expects a nested list [[path]]
+                    run_unpack([[file_path]], override=override, another_unpack=1)
+                    print("|-> DONE\n")
+
+                    processed_files.add(file_path)
+                    changed = True
+
+            return changed
+
+        if recursive:
+            # Keep scanning while each pass finds new archives (nested extraction)
+            while scan_once():
+                # Loop until a full pass yields no new work
+                pass
+        else:
+            # Single pass only
+            scan_once()
 
 # ---------- Private ----------
 
@@ -344,36 +394,56 @@ def validate_file_path(file_path: str, supported_extensions: list[str] = None) -
 
 # ---------- Public ----------
 
-def fix_path(path:str):
+def fix_path(path: str, ascii_only: bool = False, remove_globs: bool = True) -> str:
     """
-    Make the path compatible with the operating system and correct common path definition errors.
+    Sanitize a path string (optionally ASCII-only) and then convert it to the
+    current OS style via `_convert_path_to_current_os`.
+
+    Sanitization rules:
+        - Remove Unicode zero-width chars (U+200B-U+200D, U+FEFF).
+        - Remove control chars (U+0000-U+001F, U+007F).
+        - Strip leading/trailing whitespace.
+        - If `ascii_only` is True: remove non-ASCII characters;
+          otherwise normalize Unicode to NFC (keeps accents).
+        - Remove illegal filename chars:
+            * Always remove: < > " |
+            * Additionally remove `?` and `*` if `remove_globs` is True
+              (these are invalid on Windows and can trigger globbing).
 
     Args:
-        path (str): The path can be for windows, linux, mac or to a server (inside windows).
+        path (str): Raw input path.
+        ascii_only (bool): If True, drop non-ASCII; else keep Unicode (NFC).
+        remove_globs (bool): If True, also remove `?` and `*`. Defaults to True.
 
     Returns:
-        str
+        str: A sanitized, OS-appropriate path string.
+
+    Notes:
+        - Delegates platform-specific shaping to `_convert_path_to_current_os`.
+        - Colons (:) are not removed to avoid breaking `C:` and POSIX names.
     """
-    
-    if os.name == "nt":
-        windows_remove_chars = '<>"|?'
-        for wrc in windows_remove_chars:
-            path = path.replace(wrc,"")
+    # --- SETUP AND VALIDATION ---
+    if not isinstance(path, str) or not path:
+        utils.message_warning(f'Path {path!r} is not a valid string.')
+        return path
 
-    if path.startswith("\\\\"):
-        prefix = "\\\\"
-    elif path.startswith("/"):
-        prefix = "/"
+    # --- PATH SANITIZATION ---
+    path = path.strip()                                   # Trim edges
+    path = re.sub(r"[\u200B-\u200D\uFEFF]", "", path)     # Zero-width chars
+    path = re.sub(r"[\x00-\x1F\x7F]", "", path)           # Control chars
+
+    if ascii_only:
+        path = re.sub(r"[^\x00-\x7F]", "", path)          # Enforce ASCII
     else:
-        prefix = ""
-    
-    cleaned = re.sub(r"[\\/]+", "/", path.lstrip("\\"))
-    normalized = os.path.join(*cleaned.split("/"))
+        path = unicodedata.normalize("NFC", path)         # Keep accents
 
-    if ":" in normalized and ":\\" not in normalized:
-        normalized = normalized.replace(":",":\\")
-    
-    return f"{prefix}{normalized}"
+    # Remove illegal filename chars (keep separators and colons)
+    illegal_class = r'[<>"|?*]' if remove_globs else r'[<>"|]'
+    path = re.sub(illegal_class, "", path)
+
+    # --- CONVERT TO CURRENT OS ---
+    return _convert_path_to_current_os(path)
+
 
 def get_parent_folder_by_level(path, level):
     """
@@ -473,6 +543,113 @@ def make_dir_dict(source,destination,onlyfiles=None, ignorefiles = None):
     return dir_dict
 
 # ---------- Private ----------
+
+def _convert_path_to_current_os(path: str) -> str:
+    """
+    Detects the input path style (Windows, UNC, device/extended, WSL, POSIX, or
+    relative) and converts it to a form appropriate for the *current* host OS.
+
+    Supported detections:
+        - windows_extended:    Paths like \\\\?\\C:\\path\\to\\file
+        - windows_device:      Paths like \\\\.\\COM1
+        - windows_unc:         Paths like \\\\server\\share\\...
+        - windows_drive_abs:   Paths like C:\\folder\\file or C:/folder/file
+        - windows_drive_rel:   Paths like C:folder\\file (no slash after colon)
+        - wsl:                 Paths like /mnt/c/path/...
+        - posix_abs:           Absolute POSIX paths like /usr/bin/...
+        - relative:            Paths without a leading drive/anchor
+
+    Args:
+        path (str): Raw input path string.
+
+    Returns:
+        str: Path converted to an OS-appropriate form. If the input is falsy,
+            returns it unchanged.
+
+    Notes:
+        * On Windows hosts:
+            - Preserves extended/device paths as-is.
+            - Converts WSL (/mnt/<drive>/...) to drive-letter form (e.g., C:\\...).
+            - Normalizes separators to backslashes and collapses redundant
+            separators; fixes C:folder -> C:\\folder.
+            - Keeps UNC paths with canonical leading backslashes.
+        * On POSIX hosts:
+            - Converts UNC (\\\\server\\share\\...) to //server/share/... form.
+            - Converts C:\\... (or C:/...) to /mnt/<drive>/... when running on
+            Linux; C:folder is treated as C:\\folder first.
+            - Otherwise normalizes to forward slashes.
+    """
+    # --- SETUP AND VALIDATION ---
+    if not path:
+        return path
+
+    # Define OS booleans
+    is_windows = (os.name == "nt")
+    is_posix = (os.name == "posix")
+    is_linux = is_posix and os.uname().sysname == "Linux"
+
+    # Define regex patterns for detection
+    patterns = {
+        "windows_extended": re.compile(r"^\\\\\?\\\\"),
+        "windows_device": re.compile(r"^\\\\\.\\\\"),
+        "windows_unc": re.compile(r"^\\\\\\\\"),
+        "windows_drive_abs": re.compile(r"^[A-Za-z]:[\\/]"),
+        "windows_drive_rel": re.compile(r"^[A-Za-z]:(?![\\/])"),
+        "wsl": re.compile(r"^/mnt/[a-z]/"),
+    }
+    
+    # DETECT PATH TYPE
+    ptype = "relative"
+    for name, pattern in patterns.items():
+        if pattern.match(path):
+            ptype = name
+            break
+    
+    # --- WINDOWS HOST ---
+    if is_windows:
+        if ptype == "windows_unc":
+            # Keep UNC with backslashes and canonical leading \\ prefix
+            body = re.sub(r"[\\/]+", r"\\", path[2:])
+            unc  = "\\\\" + body
+            return os.path.normpath(unc) 
+        if ptype == "wsl":
+            # /mnt/c/foo/bar -> C:\foo\bar
+            m = re.match(r"^/mnt/([a-z])/(.*)", path)
+            if m:
+                drive = m.group(1).upper()
+                rest = m.group(2).replace("/", "\\")
+                return os.path.normpath(f"{drive}:\\{rest}")
+        if ptype == "windows_drive_rel":
+            # C:folder\file -> C:\folder\file
+            fixed = path[:2] + "\\" + path[2:]
+            return os.path.normpath(fixed.replace("/", "\\"))
+        if ptype in ("windows_extended", "windows_device"):
+            # Pass through as-is; caller expects raw extended/device paths.
+            return path
+        # Default: normalize to backslashes
+        return os.path.normpath(path.replace("/", "\\"))
+    
+    # --- POSIX HOST ---
+    elif is_posix:
+        if ptype == "windows_unc":
+            # \\server\share\dir\file -> //server/share/dir/file (Samba-style)
+            body = path[2:].replace("\\", "/")
+            smb  = "//" + re.sub(r"/{2,}", "/", body)
+            return os.path.normpath(smb)
+        if ptype == "windows_drive_rel":
+            # C:folder\file -> treat as C:\folder\file then convert to /mnt/c/...
+            path = path[:2] + "\\" + path[2:]
+            ptype = "windows_drive_abs"  # fall-through to next block
+        if ptype == "windows_drive_abs" and is_linux:
+            # C:\foo\bar or C:/foo/bar -> /mnt/c/foo/bar
+            drive = path[0].lower()
+            rest = path[2:].replace("\\", "/").lstrip("/")
+            return os.path.normpath(f"/mnt/{drive}/{rest}")
+        # Default: normalize to forward slashes
+        return os.path.normpath(path.replace("\\", "/"))
+
+    # --- FALLBACK ---
+    return path
 
 def _add_path_sufix(dst):
     sufix = 1
