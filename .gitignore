@@ -1,6 +1,10 @@
 # Folders
 tests
 
+#AI
+AGENTS.md
+.agents
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
