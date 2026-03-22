@@ -1,5 +1,6 @@
 # Folders
 tests
+.vscode
 
 #AI
 AGENTS.md
