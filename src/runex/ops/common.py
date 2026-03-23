@@ -12,16 +12,18 @@ from __future__ import annotations
 
 __all__ = [
     "abbr2number",
+    "has_valid_numbers",
+    "has_valid_strings",
     "import_lib",
-    "lowercase_keys_in_dict",
+    "is_lib_installed",
+    "is_valid_number",
+    "is_valid_string",
+    "normalize_keys_in_dict",
     "match_terms_to_text",
     "number2abbr",
     "str2bool",
     "str2float",
     "str_normalize",
-    "strip_whitespaces",
-    "validate_installed_lib",
-    "validate_string",
 ]
 
 #%% === Libraries ===
@@ -65,22 +67,7 @@ def global_variables() -> dict[str,Any]:
     }
 VAR = global_variables()
 
-
 #%% === Optional Import Helpers ===
-
-def validate_installed_lib(lib_name: str) -> bool:
-    """
-    Return whether a library is importable.
-
-    Args:
-        lib_name (str): Library name to validate.
-
-    Returns:
-        bool: Whether the requested library is importable.
-    """
-    normalized_lib_name = _normalize_lib_name(lib_name)
-    return importlib.util.find_spec(normalized_lib_name) is not None
-
 
 def import_lib(lib_name: str,silent: bool = True) -> object | None:
     """
@@ -102,6 +89,9 @@ def import_lib(lib_name: str,silent: bool = True) -> object | None:
             and `silent=False`.
     """
 
+    silent = str2bool(silent)
+    if not isinstance(silent, bool):
+        raise TypeError("silent must be a boolean")
     normalized_lib_name = _normalize_lib_name(lib_name)
     candidate_names = [normalized_lib_name]
     module_path_pattern = r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
@@ -199,6 +189,9 @@ def str_normalize(
             engine.
     """
 
+    lower = str2bool(lower)
+    if not isinstance(lower, bool):
+        raise TypeError("lower must be a boolean")
     if not isinstance(text, str):
         raise TypeError("text must be a string")
 
@@ -269,12 +262,21 @@ def str2float(
     """
 
     # --- SETUP AND VALIDATION ---
+    silent = str2bool(silent)
+    if not isinstance(silent, bool):
+        raise TypeError("silent must be a boolean")
+
+    if si_format is not None:
+        si_format = str2bool(si_format)
+        if not isinstance(si_format, bool):
+            raise TypeError("si_format must be a boolean or None")
+
     if value is None or isinstance(value, bool):
         return None
 
     if isinstance(value, (int, float)):
         numeric_value = float(value)
-        if not _is_valid_number(numeric_value):
+        if not is_valid_number(numeric_value):
             return _raise_or_none("Non-finite numeric input", silent, ValueError)
         return numeric_value
 
@@ -370,7 +372,7 @@ def str2float(
         normalized_value = normalized_value.replace(decimal_sep, ".")
 
     parsed_value = float(normalized_value)
-    if not _is_valid_number(parsed_value):
+    if not is_valid_number(parsed_value):
         return _raise_or_none("Non-finite numeric input", silent, ValueError)
 
     return parsed_value
@@ -412,6 +414,10 @@ def abbr2number(
     """
 
     # --- SETUP AND VALIDATION ---
+    silent = str2bool(silent)
+    if not isinstance(silent, bool):
+        raise TypeError("silent must be a boolean")
+
     if value is None:
         return _raise_or_none("Abbreviated number input cannot be None", silent, ValueError)
     if isinstance(value, bool):
@@ -419,7 +425,7 @@ def abbr2number(
 
     if isinstance(value, (int, float)):
         numeric_value = float(value)
-        if not _is_valid_number(numeric_value):
+        if not is_valid_number(numeric_value):
             return _raise_or_none("Non-finite numeric input", silent, ValueError)
         return int(numeric_value) if numeric_value.is_integer() else numeric_value
 
@@ -447,7 +453,7 @@ def abbr2number(
             return _raise_or_none(f"Invalid abbreviated number: {cleaned_value}", silent, ValueError)
 
         expanded_value = parsed_base_value * multiplier
-        if not _is_valid_number(expanded_value):
+        if not is_valid_number(expanded_value):
             return _raise_or_none("Non-finite numeric input", silent, ValueError)
 
         return int(expanded_value) if expanded_value.is_integer() else expanded_value
@@ -497,6 +503,10 @@ def number2abbr(
     """
 
     # --- SETUP AND VALIDATION ---
+    silent = str2bool(silent)
+    if not isinstance(silent, bool):
+        raise TypeError("silent must be a boolean")
+
     if isinstance(decimals, bool) or not isinstance(decimals, int):
         raise TypeError("decimals must be an integer")
     if decimals < 0:
@@ -515,7 +525,7 @@ def number2abbr(
         return _raise_or_none(f"Invalid numeric value: {value}", silent, ValueError)
 
     numeric_value = float(parsed_value)
-    if not _is_valid_number(numeric_value):
+    if not is_valid_number(numeric_value):
         return _raise_or_none("Non-finite numeric input", silent, ValueError)
 
     # --- NORMALIZATION AND RETURN ---
@@ -574,6 +584,21 @@ def str2bool(value: object, silent: bool = True) -> bool | None:
     """
 
     # --- SETUP AND VALIDATION ---
+    if isinstance(silent, bool):
+        pass
+    elif isinstance(silent, (int, float)) and silent in {0, 1}:
+        silent = bool(silent)
+    elif isinstance(silent, str):
+        cleaned_silent = silent.strip().lower()
+        if cleaned_silent in VAR["truthy_values"]:
+            silent = True
+        elif cleaned_silent in VAR["falsy_values"]:
+            silent = False
+        else:
+            raise TypeError("silent must be a boolean")
+    else:
+        raise TypeError("silent must be a boolean")
+
     if value is None:
         return _raise_or_none("Boolean input cannot be None", silent, ValueError)
 
@@ -631,6 +656,11 @@ def _resolve_suffix_factors(
         the empty-string suffix used for plain units.
     """
 
+    silent = str2bool(silent)
+    if not isinstance(silent, bool):
+        raise TypeError("silent must be a boolean")
+
+    unique = str2bool(unique)
     if not isinstance(unique, bool):
         return _raise_or_none("unique must be a boolean", silent, TypeError)
 
@@ -649,7 +679,7 @@ def _resolve_suffix_factors(
             if not key.isalpha():
                 return _raise_or_none("suffix_factors keys must contain only letters", silent, ValueError)
 
-        if not _is_valid_number(multiplier):
+        if not is_valid_number(multiplier):
             if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)):
                 return _raise_or_none("suffix_factors multipliers must be numeric", silent, TypeError)
             return _raise_or_none("suffix_factors multipliers must be finite", silent, ValueError)
@@ -801,7 +831,6 @@ def _transliterate_text(
             )
 
 
-
 #%% === Matching Helpers ===
 
 def match_terms_to_text(
@@ -827,6 +856,11 @@ def match_terms_to_text(
     Returns:
         bool: Whether any search term matches the input text.
     """
+
+    normalize = str2bool(normalize)
+    silent = str2bool(silent)
+    if not isinstance(normalize, bool) or not isinstance(silent, bool):
+        return False
 
     del silent
 
@@ -860,67 +894,327 @@ def match_terms_to_text(
     return False
 
 
-def validate_string(
-    value: str,
-    allowed_options: list[str],
-    case_sensitive: bool = False,
-) -> str:
-    """
-    Validate a string against a list of allowed values.
-
-    Args:
-        value (str): Candidate value.
-        allowed_options (list[str]): Accepted options.
-        case_sensitive (bool): Match with case sensitivity when `True`.
-
-    Returns:
-        str: Original validated value.
-    """
-
-    if not isinstance(allowed_options, list) or not all(
-        isinstance(option, str) for option in allowed_options
-    ):
-        raise TypeError("allowed_options must be a list of strings")
-    if not isinstance(value, str):
-        raise TypeError("value must be a string")
-
-    value_to_check = value if case_sensitive else value.lower()
-    options_to_check = (
-        allowed_options
-        if case_sensitive
-        else [option.lower() for option in allowed_options]
-    )
-
-    if value_to_check not in options_to_check:
-        raise ValueError(
-            f"Invalid option: {value}. Allowed options are: "
-            f"{', '.join(allowed_options)}"
-        )
-
-    return value
-
-
-def lowercase_keys_in_dict(
-    target_dict: dict,
-    keys_to_lowercase: list[str],
+def normalize_keys_in_dict(
+    target_dict: dict[Any, Any],
+    keys_to_ignore: list[str],
+    normalized_type: str = "normalize",
+    on_collision: str = "suffix",
+    collision_suffix: str = "__",
+    recursive: bool = False,
 ) -> None:
     """
-    Lowercase selected nested-dict keys in place.
+    Normalize dictionary keys in place, except ignored keys.
 
     Args:
-        target_dict (dict): Dictionary containing inner dictionaries.
-        keys_to_lowercase (list[str]): Keys that should be forced to lowercase.
+        target_dict (dict[Any, Any]): Dictionary to update.
+        keys_to_ignore (list[str]): Exact keys that should be left unchanged.
+        normalized_type (str): Key-normalization mode. Supported values are
+            `"lower"` and `"normalize"`.
+        on_collision (str): How to handle collisions when multiple keys map to
+            the same normalized name. Supported values are `"suffix"`,
+            `"overwrite"`, `"ignore"`, and `"error"`.
+        collision_suffix (str): Base suffix appended to preserved collision
+            keys when `on_collision="suffix"`.
+        recursive (bool): Recurse into dictionary values when `True`.
+
+    Raises:
+        TypeError: Raised when inputs are not the expected dictionary or
+            string types.
+        ValueError: Raised when `normalized_type` or `on_collision` is
+            unsupported, when
+            `collision_suffix` is empty in suffix mode, or when
+            `on_collision="error"` detects a collision.
+
+    Notes:
+        - `keys_to_ignore` is matched against exact string keys at each
+        dictionary level, including nested dictionaries when
+        `recursive=True`.
+        - `normalized_type="lower"` uses `str.lower()`, while
+        `normalized_type="normalize"` uses `str_normalize(..., lower=True)`.
+        - When normalize mode produces an empty key, the function uses
+        `"empty"` as the canonical key name.
+        - In suffix mode, collision keys are numbered starting at `1`, for
+        example `name__1`, `name__2`, and so on.
+        - In error mode, the function validates the full visited dictionary
+        tree before mutating it.
+        - Recursive traversal skips dictionaries that have already been
+        visited, which avoids infinite recursion on cyclic references.
     """
 
-    normalized_keys = {key.lower() for key in keys_to_lowercase}
-    for inner_dict in target_dict.values():
-        keys_to_fix = [
-            key for key in inner_dict.keys() if key.lower() in normalized_keys
+    # --- SETUP AND VALIDATION ---
+    if not isinstance(target_dict, dict):
+        raise TypeError("target_dict must be a dictionary")
+    if not isinstance(keys_to_ignore, list) or not all(
+        isinstance(key, str) for key in keys_to_ignore
+    ):
+        raise TypeError("keys_to_ignore must be a list of strings")
+    if not isinstance(normalized_type, str):
+        raise TypeError("normalized_type must be a string")
+    if not isinstance(on_collision, str):
+        raise TypeError("on_collision must be a string")
+    if not isinstance(collision_suffix, str):
+        raise TypeError("collision_suffix must be a string")
+    recursive = str2bool(recursive)
+    if not isinstance(recursive, bool):
+        raise TypeError("recursive must be a boolean")
+
+    normalized_key_mode = normalized_type.strip()
+    allowed_normalized_types = ["lower", "normalize"]
+    if not is_valid_string(
+        normalized_key_mode,
+        allowed_options=allowed_normalized_types,
+        case_sensitive=False,
+    ):
+        raise ValueError("normalized_type must be 'lower' or 'normalize'")
+    normalized_key_mode = normalized_key_mode.lower()
+
+    collision_mode = on_collision.strip()
+    allowed_collision_modes = ["suffix", "overwrite", "ignore", "error"]
+    if not is_valid_string(
+        collision_mode,
+        allowed_options=allowed_collision_modes,
+        case_sensitive=False,
+    ):
+        raise ValueError(
+            "on_collision must be 'suffix', 'overwrite', 'ignore', or 'error'"
+        )
+    collision_mode = collision_mode.strip().lower()
+    if collision_mode == "suffix" and not collision_suffix:
+        raise ValueError("collision_suffix cannot be empty when on_collision='suffix'")
+
+    # --- INTERNAL TOOLS ---
+    def normalize_key_name(key: str) -> str:
+        """Return the normalized dictionary-key name for the requested mode."""
+
+        if normalized_key_mode == "normalize":
+            return str_normalize(key, lower=True)
+        return key.lower()
+
+    def walk_dict_tree(
+        current_dict: dict[Any, Any],
+        visited_dict_ids: set[int],
+        validate_only: bool = False,
+    ) -> None:
+        """Validate or apply key normalization across a dictionary tree."""
+
+        # --- CYCLE PROTECTION ---
+        current_dict_id = id(current_dict)
+        if current_dict_id in visited_dict_ids:
+            return
+        visited_dict_ids.add(current_dict_id)
+
+        # --- GROUP MATCHING KEYS ---
+        grouped_keys: dict[str, list[str]] = {}
+        for key in list(current_dict.keys()):
+            if not isinstance(key, str):
+                continue
+
+            if key in ignored_keys:
+                continue
+
+            normalized_key = normalize_key_name(key)
+
+            if normalized_key_mode == "normalize" and normalized_key == "":
+                normalized_key = "empty"
+            grouped_keys.setdefault(normalized_key, []).append(key)
+
+        # --- HANDLE COLLISIONS AND RENAMES ---
+        for normalized_key, source_keys in grouped_keys.items():
+            keys_to_rename = [key for key in source_keys if key != normalized_key]
+
+            if validate_only:
+                has_canonical_key = normalized_key in current_dict
+                if has_canonical_key and keys_to_rename:
+                    raise ValueError(
+                        f"Key collision while normalizing '{normalized_key}'"
+                    )
+                if not has_canonical_key and len(keys_to_rename) > 1:
+                    raise ValueError(
+                        f"Key collision while normalizing '{normalized_key}'"
+                    )
+                continue
+
+            for key in keys_to_rename:
+                value = current_dict.pop(key)
+                if collision_mode == "overwrite":
+                    current_dict[normalized_key] = value
+                    continue
+
+                if normalized_key not in current_dict:
+                    current_dict[normalized_key] = value
+                    continue
+
+                if collision_mode == "ignore":
+                    continue
+
+                suffix_index = 1
+                collision_key = f"{normalized_key}{collision_suffix}{suffix_index}"
+                while collision_key in current_dict:
+                    suffix_index += 1
+                    collision_key = f"{normalized_key}{collision_suffix}{suffix_index}"
+                current_dict[collision_key] = value
+
+        # --- RECURSION ---
+        if recursive:
+            for value in current_dict.values():
+                if isinstance(value, dict):
+                    walk_dict_tree(
+                        value,
+                        visited_dict_ids,
+                        validate_only=validate_only,
+                    )
+
+    # --- EXECUTION ---
+    ignored_keys = set(keys_to_ignore)
+    if collision_mode == "error":
+        walk_dict_tree(target_dict, set(), validate_only=True)
+
+    walk_dict_tree(target_dict, set(), validate_only=False)
+
+#%% === Validation ===
+
+def is_lib_installed(lib_name: object) -> bool:
+    """
+    Return `True` when a library name is valid and importable.
+
+    Args:
+        lib_name (object): Library name to validate.
+
+    Returns:
+        bool: Whether the requested library is importable.
+    """
+
+    try:
+        normalized_lib_name = _normalize_lib_name(lib_name)
+    except (TypeError, ValueError):
+        return False
+
+    try:
+        return importlib.util.find_spec(normalized_lib_name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+
+
+def is_valid_string(
+    value: object,
+    allowed_options: list[str] | None = None,
+    case_sensitive: bool = False,
+    normalize: bool = False,
+    ) -> bool:
+    """
+    Return `True` when a value is a string and matches optional allowed values.
+
+    Args:
+        value (object): Candidate value.
+        allowed_options (list[str] | None): Accepted options when provided.
+        case_sensitive (bool): Match with case sensitivity when `True`.
+        normalize (bool): Compare normalized values when `True`.
+
+    Returns:
+        bool: Whether the input is a valid string value.
+    """
+
+    case_sensitive = str2bool(case_sensitive)
+    normalize = str2bool(normalize)
+    if not isinstance(case_sensitive, bool) or not isinstance(normalize, bool):
+        return False
+    
+    if allowed_options is not None and (
+        not isinstance(allowed_options, list)
+        or not all(isinstance(option, str) for option in allowed_options)
+    ):
+        raise TypeError("allowed_options must be a list of strings or None")
+    
+    if not isinstance(value, str):
+        return False
+    
+    if allowed_options is None:
+        return True
+
+    if normalize:
+        value_to_check = str_normalize(value, lower=not case_sensitive)
+        options_to_check = [
+            str_normalize(option, lower=not case_sensitive)
+            for option in allowed_options
         ]
-        for key in keys_to_fix:
-            lower_key = key.lower()
-            if lower_key != key:
-                inner_dict[lower_key] = inner_dict.pop(key)
+    else:
+        value_to_check = value if case_sensitive else value.casefold()
+        options_to_check = (
+            allowed_options
+            if case_sensitive
+            else [option.casefold() for option in allowed_options]
+        )
+
+    return value_to_check in options_to_check
+
+
+def is_valid_number(value: object) -> bool:
+    """
+    Return `True` when a value is a finite integer or float.
+
+    Args:
+        value (object): Value to inspect.
+
+    Returns:
+        bool: Whether the input is a finite numeric value.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(float(value))
+
+
+def has_valid_strings(
+    values: object,
+    allowed_options: list[str] | None = None,
+    case_sensitive: bool = False,
+    normalize: bool = False,
+    ) -> bool:
+    """
+    Return `True` when all list items are valid strings.
+
+    Args:
+        values (object): Values to inspect.
+        allowed_options (list[str] | None): Accepted options when provided.
+        case_sensitive (bool): Match with case sensitivity when `True`.
+        normalize (bool): Compare normalized values when `True`.
+
+    Returns:
+        bool: Whether the input is a list of valid string values.
+    """
+
+    case_sensitive = str2bool(case_sensitive)
+    normalize = str2bool(normalize)
+    if not isinstance(case_sensitive, bool) or not isinstance(normalize, bool):
+        return False
+
+    if not isinstance(values, list):
+        return False
+    return all(
+        is_valid_string(
+            value,
+            allowed_options=allowed_options,
+            case_sensitive=case_sensitive,
+            normalize=normalize,
+        )
+        for value in values
+    )
+
+
+def has_valid_numbers(values: object) -> bool:
+    """
+    Return `True` when all list items are valid finite numbers.
+
+    Args:
+        values (object): Values to inspect.
+
+    Returns:
+        bool: Whether the input is a list of valid numeric values.
+    """
+
+    if not isinstance(values, list):
+        return False
+    return all(is_valid_number(value) for value in values)
 
 
 #%% === General Internal Tools ===
@@ -962,22 +1256,6 @@ def _is_non_finite_numeric_string(value: str) -> bool:
     return cleaned_value.lower().lstrip("+-") in {"nan", "inf", "infinity"}
 
 
-def _is_valid_number(value: object) -> bool:
-    """
-    Return `True` when a value is a finite integer or float.
-
-    Args:
-        value (object): Value to inspect.
-
-    Returns:
-        bool: Whether the input is a finite numeric value.
-    """
-
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False
-    return math.isfinite(float(value))
-
-
 def _raise_or_none(
     message: str,
     silent: bool,
@@ -994,6 +1272,9 @@ def _raise_or_none(
     Returns:
         None: Always returns `None` in silent mode.
     """
+
+    silent = str2bool(silent)
+
     if silent:
         return None
     raise error_type(message)
