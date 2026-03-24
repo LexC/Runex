@@ -29,6 +29,7 @@ __all__ = [
 #%% === Libraries ===
 import re
 import math
+import inspect
 import importlib
 import importlib.util
 import unicodedata
@@ -53,6 +54,8 @@ def global_variables() -> dict[str,Any]:
         "falsy_values": {"false", "no", "0", "n"},
         "default_ignore_terms": [" ", ""],
         "default_valid_chars": r"_.|()[]{}-",
+        "space_token_divisions": [" ", "\t", "\n", "\r", "\v", "\f"],
+        "common_word_separators": {"|","-", "_", "/", "\\", ".", ",", ";", ":"},
         "number_suffix_factors": {
             "p": 1e-12,
             "n": 1e-9,
@@ -89,9 +92,7 @@ def import_lib(lib_name: str,silent: bool = True) -> object | None:
             and `silent=False`.
     """
 
-    silent = str2bool(silent)
-    if not isinstance(silent, bool):
-        raise TypeError("silent must be a boolean")
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
     normalized_lib_name = _normalize_lib_name(lib_name)
     candidate_names = [normalized_lib_name]
     module_path_pattern = r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
@@ -189,9 +190,7 @@ def str_normalize(
             engine.
     """
 
-    lower = str2bool(lower)
-    if not isinstance(lower, bool):
-        raise TypeError("lower must be a boolean")
+    lower = _validate_bool_argument(lower, False, argument_name="lower", error_type=TypeError)
     if not isinstance(text, str):
         raise TypeError("text must be a string")
 
@@ -262,14 +261,15 @@ def str2float(
     """
 
     # --- SETUP AND VALIDATION ---
-    silent = str2bool(silent)
-    if not isinstance(silent, bool):
-        raise TypeError("silent must be a boolean")
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
 
     if si_format is not None:
-        si_format = str2bool(si_format)
-        if not isinstance(si_format, bool):
-            raise TypeError("si_format must be a boolean or None")
+        si_format = _validate_bool_argument(
+            si_format,
+            False,
+            argument_name="si_format",
+            error_type=TypeError,
+        )
 
     if value is None or isinstance(value, bool):
         return None
@@ -414,9 +414,7 @@ def abbr2number(
     """
 
     # --- SETUP AND VALIDATION ---
-    silent = str2bool(silent)
-    if not isinstance(silent, bool):
-        raise TypeError("silent must be a boolean")
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
 
     if value is None:
         return _raise_or_none("Abbreviated number input cannot be None", silent, ValueError)
@@ -438,7 +436,7 @@ def abbr2number(
     if _is_non_finite_numeric_string(cleaned_value):
         return _raise_or_none("Non-finite numeric input", silent, ValueError)
 
-    resolved_suffix_factors = _resolve_suffix_factors(suffix_factors, silent=silent)
+    resolved_suffix_factors = _resolve_suffix_factors(suffix_factors, silent)
     if resolved_suffix_factors is None:
         return None
 
@@ -503,9 +501,7 @@ def number2abbr(
     """
 
     # --- SETUP AND VALIDATION ---
-    silent = str2bool(silent)
-    if not isinstance(silent, bool):
-        raise TypeError("silent must be a boolean")
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
 
     if isinstance(decimals, bool) or not isinstance(decimals, int):
         raise TypeError("decimals must be an integer")
@@ -656,13 +652,11 @@ def _resolve_suffix_factors(
         the empty-string suffix used for plain units.
     """
 
-    silent = str2bool(silent)
-    if not isinstance(silent, bool):
-        raise TypeError("silent must be a boolean")
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
 
-    unique = str2bool(unique)
-    if not isinstance(unique, bool):
-        return _raise_or_none("unique must be a boolean", silent, TypeError)
+    unique = _validate_bool_argument(unique, silent, argument_name="unique", error_type=TypeError)
+    if unique is None:
+        return None
 
     source_suffix_factors = VAR["number_suffix_factors"]
     if suffix_factors is not None:
@@ -837,10 +831,12 @@ def match_terms_to_text(
     text: str,
     search_terms: list[str],
     normalize: bool = True,
-    valid_chars: str | set[str] | None = None,
+    valid_chars: str | set[str] | None = VAR["default_valid_chars"],
     silent: bool = True,
-    ignore_terms: list[str] | str = "default",
-) -> bool:
+    ignore_terms: list[str] | str | None = "default",
+    full_match: bool = False,
+    token_division: str | list[str] = "space+",
+) -> bool | None:
     """
     Return `True` when any candidate term matches the input text.
 
@@ -850,48 +846,228 @@ def match_terms_to_text(
         normalize (bool): Normalize text and terms before matching.
         valid_chars (str | set[str] | None): Characters to preserve during
             normalization.
-        silent (bool): Preserved for backward compatibility.
-        ignore_terms (list[str] | str): Terms to ignore during matching.
+        silent (bool): Return `None` on invalid inputs when `True`.
+        ignore_terms (list[str] | str | None): Terms to ignore during
+            matching. Pass `None` to disable ignore-term filtering.
+        full_match (bool): Require the full normalized text to match a term
+            when `True`.
+        token_division (str | list[str]): Delimiter or delimiters used to
+            define tokens during partial matching. Supported special values
+            are `"space"` for any whitespace delimiter and `"space+"` for
+            whitespace plus the common word separators defined in `VAR`.
+            Defaults to `"space+"`. Search terms are not split by these
+            delimiters.
 
     Returns:
-        bool: Whether any search term matches the input text.
+        bool | None: `True` when a term matches, `False` when verification
+            completes without a match, or `None` when the function cannot
+            verify the result in silent mode or when `full_match=True`
+            compares two empty normalized strings.
+
+    Raises:
+        TypeError: Raised when `silent` is not a boolean, when `text` is not
+            a string, when `search_terms` is not a list of strings, when
+            `token_division` is not a string or list of strings, when
+            `ignore_terms` is not `None`, `"default"`, a string, or a list
+            of strings, or when normalization receives invalid preserved
+            characters, when `silent=False`.
+        ValueError: Raised when `normalize` or `full_match` is not a boolean,
+            or when `token_division` is empty, when `silent=False`.
     """
 
-    normalize = str2bool(normalize)
-    silent = str2bool(silent)
-    if not isinstance(normalize, bool) or not isinstance(silent, bool):
-        return False
+    # --- SETUP AND VALIDATION ---
+    silent = _validate_bool_argument(silent, False, argument_name="silent", error_type=TypeError)
+    normalize = _validate_bool_argument(normalize, silent, argument_name="normalize")
+    full_match = _validate_bool_argument(full_match, silent, argument_name="full_match")
 
-    del silent
+    if normalize is None or full_match is None:
+        return None
 
-    if not isinstance(text, str) or not isinstance(search_terms, list):
-        return False
-
-    normalized_ignore_terms = _resolve_ignore_terms(ignore_terms)
-    if normalize:
-        normalized_text = str_normalize(text, lower=True, valid_chars=valid_chars)
-        normalized_terms = [
-            str_normalize(term, lower=True, valid_chars=valid_chars)
-            for term in search_terms
-        ]
+    if not isinstance(text, str):
+        _raise_or_none("text must be a string", silent, TypeError)
+        return None
+    if not isinstance(search_terms, list):
+        _raise_or_none("search_terms must be a list", silent, TypeError)
+        return None
+    if not all(isinstance(term, str) for term in search_terms):
+        _raise_or_none("search_terms must contain only strings", silent, TypeError)
+        return None
+    if ignore_terms is None:
+        ignore_terms = []
+    elif ignore_terms == "default":
+        ignore_terms = VAR["default_ignore_terms"]
+    elif isinstance(ignore_terms, str):
+        ignore_terms = [ignore_terms]
+    elif isinstance(ignore_terms, list):
+        pass
     else:
-        normalized_text = text
-        normalized_terms = search_terms
+        _raise_or_none(
+            "ignore_terms must be None, 'default', a string, or a list",
+            silent,
+            TypeError,
+        )
+        return None
 
-    for term in normalized_terms:
-        if term in normalized_ignore_terms:
-            continue
+    if not all(isinstance(term, str) for term in ignore_terms):
+        _raise_or_none("ignore_terms must contain only strings", silent, TypeError)
+        return None
 
-        escaped_pattern = re.escape(term)
-        if " " in term:
-            if re.search(escaped_pattern, normalized_text):
+    try:
+        token_division = _resolve_token_divisions(token_division)
+    except (TypeError, ValueError):
+        if silent:
+            return None
+        raise
+
+    # --- NORMALIZATION ---
+    try:
+
+        if normalize:
+            valid_chars = _resolve_valid_characters(valid_chars)
+            for divider in token_division:
+                valid_chars.update(divider)
+
+            text = str_normalize(text, lower=True, valid_chars=valid_chars)
+            search_terms = [
+                str_normalize(term, lower=True, valid_chars=valid_chars)
+                for term in search_terms
+            ]
+            ignore_terms = {
+                str_normalize(term, lower=True, valid_chars=valid_chars)
+                for term in ignore_terms
+            }
+            token_division = _resolve_token_divisions(token_division, normalize_whitespace=True)
+        else:
+            ignore_terms = set(ignore_terms)
+    except (TypeError, ValueError):
+        if silent:
+            return None
+        raise
+
+    # --- MATCHING ---
+    text_tokens = _split_match_tokens(text, token_division)
+    for term in search_terms:
+        if full_match:
+            if not term and not text:
+                return None
+            if term in ignore_terms:
+                continue
+            if term == text:
                 return True
             continue
 
-        if re.search(rf"\b{escaped_pattern}\b", normalized_text):
+        if not term or term in ignore_terms:
+            continue
+
+        if any(divider in term for divider in token_division):
+            if re.search(re.escape(term), text):
+                return True
+            continue
+
+        if _has_matching_token_sequence(text_tokens, [term]):
             return True
 
     return False
+
+# --- INTERNAL TOOLS ---
+
+def _split_match_tokens(text: str, token_division: list[str]) -> list[str]:
+    """
+    Return non-empty tokens split by the configured delimiter.
+
+    Args:
+        text (str): Text to split into tokens.
+        token_division (list[str]): Delimiters used to define tokens.
+
+    Returns:
+        list[str]: Non-empty tokens derived from the input text.
+    """
+    separator_pattern = "|".join(
+        re.escape(separator)
+        for separator in sorted(token_division, key=len, reverse=True)
+    )
+    return [token for token in re.split(separator_pattern, text) if token]
+
+
+def _has_matching_token_sequence(text_tokens: list[str], term_tokens: list[str]) -> bool:
+    """
+    Return `True` when the term token sequence appears in the text tokens.
+
+    Args:
+        text_tokens (list[str]): Tokenized input text.
+        term_tokens (list[str]): Tokenized term to search for.
+
+    Returns:
+        bool: Whether the term tokens appear contiguously in the text.
+    """
+    term_length = len(term_tokens)
+    if term_length == 0 or term_length > len(text_tokens):
+        return False
+
+    for start_index in range(len(text_tokens) - term_length + 1):
+        if text_tokens[start_index:start_index + term_length] == term_tokens:
+            return True
+    return False
+
+
+def _resolve_token_divisions(
+    token_division: str | list[str],
+    normalize_whitespace: bool = False,
+) -> list[str]:
+    """
+    Return token delimiters expanded from supported aliases.
+
+    Args:
+        token_division (str | list[str]): Requested token delimiters.
+        normalize_whitespace (bool): Convert whitespace delimiters to a plain
+            space when `True`.
+
+    Returns:
+        list[str]: Expanded unique token delimiters.
+
+    Raises:
+        TypeError: Raised when `token_division` is not a string or list of
+            strings.
+        ValueError: Raised when `token_division` is empty or contains an empty
+            delimiter.
+    """
+
+    if isinstance(token_division, str):
+        token_division = [token_division]
+    elif not isinstance(token_division, list):
+        raise TypeError("token_division must be a string or list")
+    if not token_division:
+        raise ValueError("token_division cannot be empty")
+
+    divisions: list[str] = []
+    for divider in token_division:
+        if not isinstance(divider, str):
+            raise TypeError("token_division must contain only strings")
+        if not divider:
+            raise ValueError("token_division cannot contain empty strings")
+
+        if divider == "space":
+            divisions.extend(VAR["space_token_divisions"])
+            continue
+        if divider == "space+":
+            divisions.extend(VAR["space_token_divisions"])
+            divisions.extend(sorted(VAR["common_word_separators"]))
+            continue
+
+        divisions.append(divider)
+
+    if normalize_whitespace:
+        divisions = [" " if divider.isspace() else divider for divider in divisions]
+
+    unique_divisions: list[str] = []
+    seen_divisions: set[str] = set()
+    for divider in divisions:
+        if divider in seen_divisions:
+            continue
+        seen_divisions.add(divider)
+        unique_divisions.append(divider)
+
+    return unique_divisions
 
 
 def normalize_keys_in_dict(
@@ -954,9 +1130,12 @@ def normalize_keys_in_dict(
         raise TypeError("on_collision must be a string")
     if not isinstance(collision_suffix, str):
         raise TypeError("collision_suffix must be a string")
-    recursive = str2bool(recursive)
-    if not isinstance(recursive, bool):
-        raise TypeError("recursive must be a boolean")
+    recursive = _validate_bool_argument(
+        recursive,
+        False,
+        argument_name="recursive",
+        error_type=TypeError,
+    )
 
     normalized_key_mode = normalized_type.strip()
     allowed_normalized_types = ["lower", "normalize"]
@@ -1058,11 +1237,7 @@ def normalize_keys_in_dict(
         if recursive:
             for value in current_dict.values():
                 if isinstance(value, dict):
-                    walk_dict_tree(
-                        value,
-                        visited_dict_ids,
-                        validate_only=validate_only,
-                    )
+                    walk_dict_tree(value, visited_dict_ids, validate_only=validate_only)
 
     # --- EXECUTION ---
     ignored_keys = set(keys_to_ignore)
@@ -1114,8 +1289,8 @@ def is_valid_string(
         bool: Whether the input is a valid string value.
     """
 
-    case_sensitive = str2bool(case_sensitive)
-    normalize = str2bool(normalize)
+    case_sensitive = _validate_bool_argument(case_sensitive, True, argument_name="case_sensitive")
+    normalize = _validate_bool_argument(normalize, True, argument_name="normalize")
     if not isinstance(case_sensitive, bool) or not isinstance(normalize, bool):
         return False
     
@@ -1183,8 +1358,8 @@ def has_valid_strings(
         bool: Whether the input is a list of valid string values.
     """
 
-    case_sensitive = str2bool(case_sensitive)
-    normalize = str2bool(normalize)
+    case_sensitive = _validate_bool_argument(case_sensitive, True, argument_name="case_sensitive")
+    normalize = _validate_bool_argument(normalize, True, argument_name="normalize")
     if not isinstance(case_sensitive, bool) or not isinstance(normalize, bool):
         return False
 
@@ -1218,27 +1393,6 @@ def has_valid_numbers(values: object) -> bool:
 
 
 #%% === General Internal Tools ===
-
-def _resolve_ignore_terms(ignore_terms: list[str] | str) -> list[str]:
-    """
-    Normalize ignored term configuration for text matching.
-
-    Args:
-        ignore_terms (list[str] | str): Ignore term definition.
-
-    Returns:
-        list[str]: Normalized ignore terms list.
-    """
-
-    if ignore_terms == "default":
-        return VAR["default_ignore_terms"]
-    if isinstance(ignore_terms, str):
-        return [ignore_terms]
-    if isinstance(ignore_terms, list):
-        return ignore_terms
-    raise TypeError("ignore_terms must be 'default', a string, or a list")
-
-
 def _is_non_finite_numeric_string(value: str) -> bool:
     """
     Return `True` when a string is a signed non-finite numeric token.
@@ -1278,6 +1432,51 @@ def _raise_or_none(
     if silent:
         return None
     raise error_type(message)
+
+
+def _validate_bool_argument(
+    value: object,
+    silent: bool,
+    argument_name: str | None = None,
+    error_type: type[Exception] = ValueError,
+) -> bool | None:
+    """
+    Return a validated boolean argument or `None` in silent mode.
+
+    Args:
+        value (object): Candidate boolean value.
+        silent (bool): Return `None` instead of raising on invalid input.
+        argument_name (str | None): Argument name used in validation errors.
+            When omitted, the helper tries to infer it from the caller.
+        error_type (type[Exception]): Error type raised for invalid input.
+
+    Returns:
+        bool | None: Parsed boolean value, or `None` when invalid and
+            `silent=True`.
+    """
+
+    if argument_name is None:
+        frame = inspect.currentframe()
+        caller_frame = frame.f_back if frame is not None else None
+        try:
+            if caller_frame is None:
+                argument_name = "value"
+            else:
+                caller_info = inspect.getframeinfo(caller_frame, context=1)
+                source_text = "".join(caller_info.code_context or []).strip()
+                name_match = re.search(r"_validate_bool_argument\(\s*([^,\n)]+)", source_text)
+                argument_name = name_match.group(1).strip() if name_match else "value"
+        finally:
+            del frame
+            del caller_frame
+
+    parsed_value = str2bool(value, silent=True)
+    if isinstance(parsed_value, bool):
+        return parsed_value
+
+    _raise_or_none(f"{argument_name} must be a boolean", silent, error_type)
+    return None
+
 
 
 #%%
