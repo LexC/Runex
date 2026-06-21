@@ -44,7 +44,8 @@ def input(prompt_message: str) -> str:
         str: Raw user input.
     """
 
-    return builtins.input(prompt_message)
+    lprint.lprint(prompt_message, end="", flush=True, log=False)
+    return builtins.input()
 
 
 def confirmation(question: str) -> bool:
@@ -59,10 +60,10 @@ def confirmation(question: str) -> bool:
     """
 
     while True:
-        response = common.str2bool(input(f"{question} (yes/no): ").strip().lower())
+        response = common.str2bool(input(f"{question} (yes/no): ").strip().lower(), silent=True)
         if response is not None:
             return response
-        print(VAR["invalid_confirmation_message"])
+        lprint.lprint(VAR["invalid_confirmation_message"])
 
 
 def option(
@@ -84,12 +85,12 @@ def option(
 
     keys, items = _normalize_option_items(options, descriptions)
 
-    print(VAR["options_header"])
+    lprint.lprint(VAR["options_header"])
     for index, (key, description) in enumerate(items, start=1):
         display = f"\t{index}. {key}"
         if description:
             display += f": {description}"
-        print(display)
+        lprint.lprint(display)
 
     while True:
         user_input = input(VAR["option_prompt"]).strip()
@@ -102,9 +103,9 @@ def option(
             return user_input
 
         if not loop:
-            print("Invalid selection.")
+            lprint.lprint("Invalid selection.")
             return None
-        print("Invalid selection. Please try again.")
+        lprint.lprint("Invalid selection. Please try again.")
 
 
 #%% === Internal Tools ===

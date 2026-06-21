@@ -118,7 +118,8 @@ def load_spreadsheet(
         pd.DataFrame | dict: Loaded spreadsheet data.
     """
 
-    common.validate_string(dtype, ["df", "dict"])
+    if not common.is_valid_string(dtype, ["df", "dict"]):
+        raise ValueError(f"Invalid dtype: {dtype}. Allowed options are: df, dict")
 
     csv_extensions, excel_extensions, index_col, header, orient = (
         _resolve_load_settings(
