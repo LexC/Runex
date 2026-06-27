@@ -4,25 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runex"
-version = "0.1.7" #### VERSION
+version = "1.0.0" #### VERSION
 
 description = "Minimal, typed utility functions—symbols you can run."
 authors = [{ name = "Lex" }]
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
-dependencies = [
-    "pandas",
-    "openpyxl",
-    "xlrd",
-    "numpy",
-    "scipy",
-    "seaborn",
-    "matplotlib",
-]
 
 [project.urls]
 homepage = "https://github.com/lex/runex"
+
+[project.optional-dependencies]
+spreadsheets = [
+    "pandas",
+    "openpyxl",
+    "xlrd",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

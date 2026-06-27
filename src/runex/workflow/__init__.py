@@ -1,17 +1,13 @@
-"""Public package surface for ``runex.engine``."""
+"""Public package surface for ``runex.workflow``."""
 
 from __future__ import annotations
 
 import importlib
 
-__all__ = ["dirwiz", "lprint"]
+__all__ = ["dirops"]
 
 
 def __getattr__(name: str):
-    if name == "lprint":
-        module = importlib.import_module("..ops.lprint", __name__)
-        globals()[name] = module
-        return module
     if name in __all__:
         module = importlib.import_module(f".{name}", __name__)
         globals()[name] = module
